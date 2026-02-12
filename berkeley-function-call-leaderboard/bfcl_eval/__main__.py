@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import typer
 from importlib.metadata import version as _version
-from bfcl_eval._llm_response_generation import main as generation_main
+from bfcl_eval.llm_response_generation import main as generation_main
 from bfcl_eval.constants.category_mapping import TEST_COLLECTION_MAPPING
 from bfcl_eval.constants.eval_config import (
     DOTENV_PATH,

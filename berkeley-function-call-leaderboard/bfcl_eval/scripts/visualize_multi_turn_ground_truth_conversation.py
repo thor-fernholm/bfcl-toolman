@@ -1,7 +1,7 @@
 import json
 from copy import deepcopy
 
-from bfcl_eval._llm_response_generation import parse_test_category_argument
+from bfcl_eval.llm_response_generation import parse_test_category_argument
 from bfcl_eval.constants.eval_config import UTILS_PATH
 from bfcl_eval.utils import (
     write_list_of_dicts_to_file,

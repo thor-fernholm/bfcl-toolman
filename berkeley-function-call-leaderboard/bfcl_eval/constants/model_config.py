@@ -68,6 +68,8 @@ from bfcl_eval.model_handler.local_inference.salesforce_qwen import (
 )
 from bfcl_eval.model_handler.local_inference.think_agent import ThinkAgentHandler
 
+from bfcl_eval.model_handler.toolman_handler import ToolmanHandler
+
 # -----------------------------------------------------------------------------
 # A mapping of model identifiers to their respective model configurations.
 # Each key corresponds to the model id passed to the `--model` argument
@@ -116,6 +118,30 @@ class ModelConfig:
 
 # Inference through API calls
 api_inference_model_map = {
+    "toolman-go": ModelConfig(
+        model_name="toolman-go",
+        display_name="Toolman",
+        url="http://localhost:8080/bfcl",
+        org="Toolman Interface",
+        license="MIT",
+        model_handler=ToolmanHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "toolman-go-ptc": ModelConfig(
+        model_name="toolman-go",
+        display_name="Toolman",
+        url="http://localhost:8080/bfcl",
+        org="Toolman Interface",
+        license="MIT",
+        model_handler=ToolmanHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "gorilla-openfunctions-v2": ModelConfig(
         model_name="gorilla-openfunctions-v2",
         display_name="Gorilla-OpenFunctions-v2 (FC)",

@@ -1,4 +1,4 @@
-from bfcl_eval._llm_response_generation import get_args, main
+from bfcl_eval.llm_response_generation import get_args, main
 from bfcl_eval.constants.eval_config import DOTENV_PATH
 from dotenv import load_dotenv
 
