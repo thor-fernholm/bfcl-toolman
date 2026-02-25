@@ -20,7 +20,7 @@ RUN_CONFIG = {
     #"test_category": ["multi_turn_long_context"], # BFCL expects a list of categories
     "enable_ptc": True,
     "bellman_model": "OpenAI/gpt-4o-mini",
-    "temperature": 0.001,               # BFCL default is often 0.001
+    "temperature": 0,
     "num_threads": 1,
     "num_gpus": 1,
     "gpu_memory_utilization": 0.9,

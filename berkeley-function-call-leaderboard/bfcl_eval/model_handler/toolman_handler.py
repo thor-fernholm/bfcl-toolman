@@ -28,12 +28,11 @@ class ToolmanHandler(BaseHandler):
             "TOOLMAN_BELLMAN_MODEL",
             kwargs.get("bellman_model", "OpenAI/gpt-4o-mini")
         )
-        # self.enable_ptc = kwargs.get("enable_ptc", True)
-        # self.bellman_model = kwargs.get("bellman_model", "OpenAI/gpt-4o-mini")
 
     def _query_FC(self, inference_data: dict):
         payload = {
             "messages": inference_data["message"],
+            "new_tool_responses": inference_data["new_tool_responses"],
             "toolman_history": inference_data["toolman_history"],
             "tools": inference_data["tools"],
             "temperature": self.temperature,
@@ -49,22 +48,22 @@ class ToolmanHandler(BaseHandler):
             return response.json(), time.time() - start
 
         except Exception as e:
-            # FORCE EXIT: This bypasses BFCL's internal error catching
+            # Force exit to stop testing: This bypasses BFCL's internal error catching
             print(f"\n[FATAL] Toolman Connection Error: {e}")
             print("[FATAL] The Go server likely crashed. Stopping benchmark immediately.")
             sys.exit(1)
 
-            # ... (Keep rest of the class methods unchanged)
+
     def _pre_query_processing_FC(self, inference_data, test_entry):
         if "message" not in inference_data:
             inference_data["message"] = []
         if "toolman_history" not in inference_data:
             inference_data["toolman_history"] = []
+        if "new_tool_responses" not in inference_data:
+            inference_data["new_tool_responses"] = []
 
-        # add system prompt! TODO Better system prompt? cut it?
         functions: list = test_entry["function"]
-        if self.enable_ptc: # replace tool list for ptc
-            # functions = "*For tool usage documentation, see the following JavaScript execution.*"
+        if self.enable_ptc: # replace tool list in system prompt for ptc
             functions = ["code_execution"]
         test_entry_id: str = test_entry["id"]
         test_entry["question"][0] = system_prompt_pre_processing_chat_model(
@@ -73,7 +72,7 @@ class ToolmanHandler(BaseHandler):
         system_prompt = extract_system_prompt(test_entry["question"][0])
         if system_prompt:
             inference_data["system_prompt"] = system_prompt
-        else:
+        else: # TODO: this should be removed?
             inference_data["system_prompt"] = "You are a helpful assistant with access to tools. Follow instructions closely. Important: at each turn you are expected to use tool(s), unless task is done."
 
         return inference_data
@@ -123,7 +122,7 @@ class ToolmanHandler(BaseHandler):
 
         return {
             "model_responses": model_responses, # {"func_name": {"arg": val}} for BFCL
-            "model_responses_message_for_chat_history": {"role": "function-call", "content": content},
+            "model_responses_message_for_chat_history": {"role": "function-call", "content": content}, #TODO: remove
             "tool_call_ids": tool_call_ids,
             "tool_call_func_names": tool_call_func_names,
             "toolman_history": toolman_history,
@@ -132,9 +131,9 @@ class ToolmanHandler(BaseHandler):
         }
 
     def _add_execution_results_FC(self, inference_data, execution_results, model_response_data):
-        # for execution_result, tool_call_func_name, tool_call_id in zip(
-        #         execution_results, model_response_data["tool_call_func_names"], model_response_data["tool_call_ids"]
-        # ):
+        # reset new tool responses (then add new ones)
+        inference_data["new_tool_responses"] = []
+
         if execution_results and model_response_data["tool_call_ids"] and model_response_data["tool_call_func_names"]:
             if len(execution_results) != len(model_response_data["tool_call_ids"]) or len(execution_results) != len(model_response_data["tool_call_func_names"]):
                 print("Incompatible execution results!! ")
@@ -142,22 +141,19 @@ class ToolmanHandler(BaseHandler):
                     execution_results, model_response_data["tool_call_ids"], model_response_data["tool_call_func_names"]
             ):
                 inference_data["message"].append({"role": "tool_response", "content": str(execution_result), "tool_call_id": tool_id, "tool_name": tool_name})
+                inference_data["new_tool_responses"].append({"role": "tool_response", "content": str(execution_result), "tool_call_id": tool_id, "tool_name": tool_name})
         else:
-            print("!!! something went wrong...")
+            print("something went wrong...")
             print("execution_results: ", execution_results)
             print("tool_call_ids: ", model_response_data["tool_call_ids"])
 
         # add toolman conversation history
         inference_data["toolman_history"] = model_response_data["toolman_history"]
 
-        # for result in execution_results:
-        #     # inference_data["message"].append({"role": "tool", "name": result["func_name"], "tool_call_id": result["tool_call_id"], "content": str(result)})
-        #     inference_data["message"].append({"role": "tool", "content": str(result)})
         return inference_data
 
     def decode_ast(self, result, language="Python", has_tool_call_tag=False):
         """
-        Ref: GeminiHandler.decode_ast
         Expects: List of Dicts [{"func": {args}}]
         Returns: List of Dicts (Pass-through for AST evaluation)
         """
@@ -167,7 +163,6 @@ class ToolmanHandler(BaseHandler):
 
     def decode_execute(self, result, has_tool_call_tag=False):
         """
-        Ref: GeminiHandler.decode_execute
         Expects: List of Dicts [{"func": {args}}]
         Returns: List of Strings ["func(a=1)"] (For Execution)
         """
@@ -199,9 +194,6 @@ class ToolmanHandler(BaseHandler):
                 print(f"[Warning] decode_execute failed on item: {function_call} - {e}")
                 continue
 
-                    # args_str = ",".join([f"{k}={repr(v)}" for k, v in func_args.items()])
-                    # func_call_list.append(f"{func_name}({args_str})")
-
         return func_call_list
 
     def add_first_turn_message_FC(self, inference_data, first_turn_message):
@@ -214,4 +206,6 @@ class ToolmanHandler(BaseHandler):
 
     def _add_assistant_message_FC(self, inference_data, model_response_data):
         inference_data["message"].append(model_response_data["model_responses_message_for_chat_history"])
+        # Fix: clear new_tool_responses every turn - responses are added later
+        inference_data["new_tool_responses"] = []
         return inference_data

@@ -1,3 +1,17 @@
+# Toolman
+
+This is a fork of BFCL (part of gorilla), that integrates with [Toolman](https://github.com/thor-fernholm/toolman).
+
+Activate conda env: `conda activate bfcl`
+
+Run benchmark by running file: `run_benchmark.py`
+
+Run eval:
+
+```bash
+bfcl evaluate --model toolman-go-ptc --partial-eval --test-category simple_python
+```
+
 # Berkeley Function Calling Leaderboard (BFCL)
 
 ## Table of Contents
