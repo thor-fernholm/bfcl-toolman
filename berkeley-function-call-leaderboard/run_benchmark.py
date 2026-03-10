@@ -10,16 +10,17 @@ from bfcl_eval.model_handler.toolman_handler import ToolmanHandler
 
 # --- CONFIGURATION ---
 RUN_CONFIG = {
-    "model": ["toolman-go-ptc"],              # BFCL expects a list of models
+    "model": ["toolman-go"],              # BFCL expects a list of models
     #"test_category": ["multi_turn"],
-    "test_category": ["multi_turn_base"], # BFCL expects a list of categories
+    #"test_category": ["multi_turn_base"], # BFCL expects a list of categories
     #"test_category": ["single_turn"], # BFCL expects a list of categories
-    #"test_category": ["simple_python"], # BFCL expects a list of categories
+    "test_category": ["simple_python"], # BFCL expects a list of categories
     #"test_category": ["simple_java"], # BFCL expects a list of categories
-    #"test_category": ["multiple"], # BFCL expects a list of categories
+    #"test_category": ["agentic"], # BFCL expects a list of categories
     #"test_category": ["multi_turn_long_context"], # BFCL expects a list of categories
     "enable_ptc": True,
-    "bellman_model": "OpenAI/gpt-4o-mini",
+    # "bellman_model": "OpenAI/gpt-4o-mini",
+    "bellman_model": "OpenAI/gpt-5-mini-2025-08-07",
     "temperature": 0,
     "num_threads": 1,
     "num_gpus": 1,
@@ -48,13 +49,13 @@ class ToolmanWrapper(ToolmanHandler):
         super().__init__(model_name, temperature, registry_name, is_fc_model, **kwargs)
 
 def run_evaluation():
-    print(f"🚀 Starting Benchmark: {RUN_CONFIG['model'][0]} (PTC={RUN_CONFIG['enable_ptc']})")
-
     os.environ["TOOLMAN_ENABLE_PTC"] = str(RUN_CONFIG["enable_ptc"])
     os.environ["TOOLMAN_BELLMAN_MODEL"] = RUN_CONFIG["bellman_model"]
 
     if RUN_CONFIG["enable_ptc"] == True:
         RUN_CONFIG["model"] = ["toolman-go-ptc"]
+
+    print(f"🚀 Starting Benchmark: {RUN_CONFIG['model'][0]} (PTC={RUN_CONFIG['enable_ptc']})")
 
     # 1. Create the robust arguments object
     args = MockArgs(**RUN_CONFIG)

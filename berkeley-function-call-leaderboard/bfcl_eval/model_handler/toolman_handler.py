@@ -38,7 +38,8 @@ class ToolmanHandler(BaseHandler):
             "temperature": self.temperature,
             "system_prompt": inference_data.get("system_prompt", ""),
             "enable_ptc": self.enable_ptc,
-            "bellman_model": self.bellman_model
+            "bellman_model": self.bellman_model,
+            "test_entry_id": inference_data["test_entry_id"]
         }
 
         start = time.time()
@@ -64,16 +65,17 @@ class ToolmanHandler(BaseHandler):
 
         functions: list = test_entry["function"]
         if self.enable_ptc: # replace tool list in system prompt for ptc
-            functions = ["code_execution"]
+            functions = ["{ 'code_execution' }"]
         test_entry_id: str = test_entry["id"]
         test_entry["question"][0] = system_prompt_pre_processing_chat_model(
             test_entry["question"][0], functions, test_entry_id
         )
-        system_prompt = extract_system_prompt(test_entry["question"][0])
-        if system_prompt:
-            inference_data["system_prompt"] = system_prompt
-        else: # TODO: this should be removed?
-            inference_data["system_prompt"] = "You are a helpful assistant with access to tools. Follow instructions closely. Important: at each turn you are expected to use tool(s), unless task is done."
+        inference_data["system_prompt"] = extract_system_prompt(test_entry["question"][0])
+        # if system_prompt:
+        #     inference_data["system_prompt"] = system_prompt
+
+        # add test id to inference data
+        inference_data["test_entry_id"] = test_entry_id
 
         return inference_data
 
@@ -208,4 +210,6 @@ class ToolmanHandler(BaseHandler):
         inference_data["message"].append(model_response_data["model_responses_message_for_chat_history"])
         # Fix: clear new_tool_responses every turn - responses are added later
         inference_data["new_tool_responses"] = []
+        # fix: update the toolman hist in inference data (otherwise lost for next turn)
+        inference_data["toolman_history"] = model_response_data["toolman_history"]
         return inference_data
