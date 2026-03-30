@@ -120,7 +120,7 @@ class ModelConfig:
 api_inference_model_map = {
     "toolman-go": ModelConfig(
         model_name="toolman-go",
-        display_name="Toolman",
+        display_name="Toolman (std)",
         url="http://localhost:8080/bfcl",
         org="Toolman Interface",
         license="MIT",
@@ -131,10 +131,10 @@ api_inference_model_map = {
         underscore_to_dot=True,
     ),
     "toolman-go-ptc": ModelConfig(
-        model_name="toolman-go",
-        display_name="Toolman",
+        model_name="toolman-go-ptc",
+        display_name="Toolman (PTC)",
         url="http://localhost:8080/bfcl",
-        org="Toolman Interface",
+        org="Toolman Interface PTC",
         license="MIT",
         model_handler=ToolmanHandler,
         input_price=None,

@@ -9,7 +9,13 @@ Run benchmark by running file: `run_benchmark.py`
 Run eval:
 
 ```bash
-bfcl evaluate --model toolman-go-ptc --partial-eval --test-category simple_python
+bfcl evaluate --model toolman-go-ptc --partial-eval
+```
+
+Set `BFCL_PROJECT_ROOT` as an environment variable in your shell environment (needs to be set again on project restart):
+
+```bash
+export BFCL_PROJECT_ROOT=/home/thor/IdeaProjects/bfcl-toolman/berkeley-function-call-leaderboard
 ```
 
 # Berkeley Function Calling Leaderboard (BFCL)

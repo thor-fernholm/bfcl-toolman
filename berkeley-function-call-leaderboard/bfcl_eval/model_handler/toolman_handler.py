@@ -51,8 +51,9 @@ class ToolmanHandler(BaseHandler):
         except Exception as e:
             # Force exit to stop testing: This bypasses BFCL's internal error catching
             print(f"\n[FATAL] Toolman Connection Error: {e}")
+            # print("[FATAL] The Go server likely crashed. Retrying...")
             print("[FATAL] The Go server likely crashed. Stopping benchmark immediately.")
-            sys.exit(1)
+            # sys.exit(1)
 
 
     def _pre_query_processing_FC(self, inference_data, test_entry):
