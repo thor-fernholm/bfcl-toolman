@@ -21,6 +21,8 @@ from bfcl_eval.utils import *
 from dotenv import load_dotenv
 from tqdm import tqdm
 
+import bfcl_eval.eval_checker.toolman_eval as toolman_eval
+
 
 def get_handler(model_name: str) -> BaseHandler:
     config = MODEL_CONFIG_MAPPING[model_name]
@@ -456,6 +458,8 @@ def format_sensitivity_runner(
             config_stats[format_sensitivity_config]["correct"] += 1
         else:
             result.append(entry_result)
+        # score langfuse trace
+        toolman_eval.score_langfuse_trace(index, model_name, entry_result["valid"])
 
     # Compute accuracy per configuration
     accuracy_by_config = {
@@ -534,6 +538,8 @@ def agentic_runner(
         else:
             entry_result["inference_log"] = model_result[i].get("inference_log", "")
             result.append(entry_result)
+        # score langfuse trace
+        toolman_eval.score_langfuse_trace(index, model_name, entry_result["valid"])
 
     return save_eval_results(
         result, correct_count, model_result, test_category, model_name, score_dir
@@ -576,6 +582,8 @@ def multi_turn_runner(
         else:
             entry_result["inference_log"] = model_result[i].get("inference_log", "")
             result.append(entry_result)
+        # score langfuse trace
+        toolman_eval.score_langfuse_trace(index, model_name, entry_result["valid"])
 
     return save_eval_results(
         result, correct_count, model_result, test_category, model_name, score_dir
@@ -604,6 +612,8 @@ def relevance_file_runner(
             correct_count += 1
         else:
             result.append(entry_result)
+        # score langfuse trace
+        toolman_eval.score_langfuse_trace(index, model_name, entry_result["valid"])
 
     return save_eval_results(
         result, correct_count, model_result, test_category, model_name, score_dir
@@ -658,6 +668,8 @@ def ast_file_runner(
             correct_count += 1
         else:
             result.append(entry_result)
+        # score langfuse trace
+        toolman_eval.score_langfuse_trace(index, model_name, entry_result["valid"])
 
     return save_eval_results(
         result, correct_count, model_result, test_category, model_name, score_dir

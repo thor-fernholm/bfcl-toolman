@@ -118,6 +118,18 @@ class ModelConfig:
 
 # Inference through API calls
 api_inference_model_map = {
+    "ptc-fc-OpenAI/gpt-5-mini-2025-08-07": ModelConfig(
+        model_name="toolman-gpt-5-mini-2025-08-07",
+        display_name="Toolman (ptc) gpt-5-mini",
+        url="http://localhost:8080/bfcl",
+        org="Toolman Interface",
+        license="MIT",
+        model_handler=ToolmanHandler,
+        input_price=None,
+        output_price=None,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
     "toolman-go": ModelConfig(
         model_name="toolman-go",
         display_name="Toolman (std)",

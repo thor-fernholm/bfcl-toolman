@@ -55,6 +55,10 @@ def run_evaluation():
     if RUN_CONFIG["enable_ptc"] == True:
         RUN_CONFIG["model"] = ["toolman-go-ptc"]
 
+    ptc_flag = "ptc-fc" if RUN_CONFIG["enable_ptc"] else "regular-fc"
+    bellman_model = RUN_CONFIG["bellman_model"]
+    RUN_CONFIG["model"] = f"{ptc_flag}-{bellman_model}"
+
     print(f"🚀 Starting Benchmark: {RUN_CONFIG['model'][0]} (PTC={RUN_CONFIG['enable_ptc']})")
 
     # 1. Create the robust arguments object

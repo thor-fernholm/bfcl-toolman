@@ -4,12 +4,19 @@ This is a fork of BFCL (part of gorilla), that integrates with [Toolman](https:/
 
 Activate conda env: `conda activate bfcl`
 
+Install Langfuse: `pip install langfuse`
+
 Run benchmark by running file: `run_benchmark.py`
 
 Run eval:
 
 ```bash
-bfcl evaluate --model toolman-go-ptc --partial-eval
+bfcl evaluate --model toolman-go-ptc --partial-eval 
+```
+
+Specific model:
+```bash
+bfcl evaluate --model ptc-fc-OpenAI_gpt-5-mini-2025-08-07 --partial-eval
 ```
 
 Set `BFCL_PROJECT_ROOT` as an environment variable in your shell environment (needs to be set again on project restart):
