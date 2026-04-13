@@ -4,7 +4,7 @@ This is a fork of BFCL (part of gorilla), that integrates with [Toolman](https:/
 
 Activate conda env: `conda activate bfcl`
 
-Install Langfuse: `pip install langfuse`
+Install Langfuse: `pip install langfuse`, and pandas `pip install pandas`.
 
 Run benchmark by running file: `run_benchmark.py`
 
