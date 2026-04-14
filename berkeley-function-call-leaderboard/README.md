@@ -16,7 +16,7 @@ bfcl evaluate --model toolman-go-ptc --partial-eval
 
 Specific model:
 ```bash
-bfcl evaluate --model ptc-fc-OpenAI_gpt-5-mini-2025-08-07 --partial-eval
+bfcl evaluate --model ptc-fc-OpenAI/gpt-5-mini-2025-08-07 --partial-eval
 ```
 
 Set `BFCL_PROJECT_ROOT` as an environment variable in your shell environment (needs to be set again on project restart):

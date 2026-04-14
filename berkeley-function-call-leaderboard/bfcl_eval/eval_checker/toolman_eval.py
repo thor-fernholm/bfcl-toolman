@@ -25,6 +25,11 @@ def score_langfuse_trace(test_id, model_name, success):
     Attach per-test scores to an existing Langfuse trace.
     """
     trace_id = get_trace_id_by_tags(test_id, model_name)
+
+    if not trace_id:
+        print(f"[Langfuse scoring error] Trace not found for test_id={test_id}, model={model_name}")
+        return
+
     try:
         langfuse.create_score(
             trace_id=trace_id,
@@ -35,16 +40,16 @@ def score_langfuse_trace(test_id, model_name, success):
     except Exception as e:
         print(f"[Langfuse scoring error] trace_id={trace_id}: {e}")
 
-def get_trace_id_by_tags(test_id, model_name, retries=3, sleep_seconds=5):
+def get_trace_id_by_tags(test_id, model_name, retries=3, sleep_seconds=0.01):
     """
     Look up the Langfuse trace by tag and return its trace_id.
     """
     tags = make_trace_tags(test_id, model_name)
-    print("tags:", tags)
+    # print("tags:", tags)
     for attempt in range(retries):
         try:
             traces = langfuse.api.trace.list(
-                page=1,
+                # page=1,
                 limit=10,
                 tags=tags,
             ).data

@@ -31,27 +31,27 @@ class MetricsCalculator:
         self.results = []
         self.target_tags = target_tags
         # Create a safe folder name from the tags (e.g., ptc-fc_OpenAI_gpt-5-mini)
-        safe_tag_name = "_".join(target_tags).replace("/", "_").replace("\\", "_")
+        safe_tag_name = "-".join(target_tags).replace("/", "_").replace("\\", "_")
         self.output_dir = Path(f"custom_metrics/{safe_tag_name}")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def fetch_10_traces_by_tags(self, tags, max_pages=10):
+    def fetch_top_traces_by_tags(self, tags, top, max_pages=10):
         """Fetches all traces matching the given tags handling pagination."""
         print(f"Fetching traces for tags: {tags}...")
         all_traces = []
         page = 1
 
         while page <= max_pages:
-            response = langfuse.api.trace.list(tags=tags, page=page, limit=10)
+            response = langfuse.api.trace.list(tags=tags, page=page, limit=100)
             if not response.data:
                 break
             all_traces.extend(response.data)
             page += 1
-            if len(all_traces) >= 10:
-                all_traces = all_traces[:10]
+            if len(all_traces) >= top:
+                all_traces = all_traces[:top]
                 break
 
-        print(f"Found {len(all_traces)} traces.")
+        print(f"Found top {len(all_traces)} traces.")
         return all_traces
 
     def fetch_traces_by_tags(self, tags, max_pages=100):
@@ -108,6 +108,9 @@ class MetricsCalculator:
             "total_input_tokens": 0,
             "total_output_tokens": 0,
             "total_thinking_tokens": 0,
+            "avg_input_tokens_per_step": 0.0,
+            "avg_output_tokens_per_step": 0.0,
+            "avg_thinking_tokens_per_step": 0.0,
             "total_llm_latency_sec": 0.0,
             "step_count": 0,
             "turn_count": 0,
@@ -214,12 +217,18 @@ class MetricsCalculator:
         if trace_metrics["turn_count"] > 0:
             trace_metrics["avg_tool_calls_per_turn"] = trace_metrics["tool_call_count"] / trace_metrics["turn_count"]
 
-        # Average latency per turn
+        # Average tokens/latency per turn
         if trace_metrics["turn_count"] > 0:
+            trace_metrics["avg_input_tokens_per_turn"] = trace_metrics["total_input_tokens"] / trace_metrics["turn_count"]
+            trace_metrics["avg_output_tokens_per_turn"] = trace_metrics["total_output_tokens"] / trace_metrics["turn_count"]
+            trace_metrics["avg_thinking_tokens_per_turn"] = trace_metrics["total_thinking_tokens"] / trace_metrics["turn_count"]
             trace_metrics["avg_llm_latency_per_turn_sec"] = trace_metrics["total_llm_latency_sec"] / trace_metrics["turn_count"]
 
-        # Average latency per step
+        # Average tokens/latency per step
         if trace_metrics["step_count"] > 0:
+            trace_metrics["avg_input_tokens_per_step"] = trace_metrics["total_input_tokens"] / trace_metrics["step_count"]
+            trace_metrics["avg_output_tokens_per_step"] = trace_metrics["total_output_tokens"] / trace_metrics["step_count"]
+            trace_metrics["avg_thinking_tokens_per_step"] = trace_metrics["total_thinking_tokens"] / trace_metrics["step_count"]
             trace_metrics["avg_llm_latency_per_step_sec"] = trace_metrics["total_llm_latency_sec"] / trace_metrics["step_count"]
 
         self.results.append(trace_metrics)
@@ -279,9 +288,9 @@ class MetricsCalculator:
         md += "## 2. Averages by Outcome (Success vs. Failure)\n"
         md += "| Metric | Successes | Failures |\n"
         md += "|---|---|---|\n"
-        md += f"| **Input Tokens** | {df_success['total_input_tokens'].mean():.1f} | {df_fail['total_input_tokens'].mean():.1f} |\n"
-        md += f"| **Output Tokens** | {df_success['total_output_tokens'].mean():.1f} | {df_fail['total_output_tokens'].mean():.1f} |\n"
-        md += f"| **Thinking Tokens** | {df_success['total_thinking_tokens'].mean():.1f} | {df_fail['total_thinking_tokens'].mean():.1f} |\n"
+        md += f"| **Input Tokens (Test/Turn/Step)** | {df_success['total_input_tokens'].mean():.1f} / {df_success['avg_input_tokens_per_turn'].mean():.1f} / {df_success['avg_input_tokens_per_step'].mean():.1f} | {df_fail['total_input_tokens'].mean():.1f} / {df_fail['avg_input_tokens_per_turn'].mean():.1f} / {df_fail['avg_input_tokens_per_step'].mean():.1f} |\n"
+        md += f"| **Output Tokens (Test/Turn/Step)** | {df_success['total_output_tokens'].mean():.1f} / {df_success['avg_output_tokens_per_turn'].mean():.1f} / {df_success['avg_output_tokens_per_step'].mean():.1f} | {df_fail['total_output_tokens'].mean():.1f} / {df_fail['avg_output_tokens_per_turn'].mean():.1f} / {df_fail['avg_output_tokens_per_step'].mean():.1f} |\n"
+        md += f"| **Thinking Tokens (Test/Turn/Step)** | {df_success['total_thinking_tokens'].mean():.1f}  / {df_success['avg_thinking_tokens_per_turn'].mean():.1f} / {df_success['avg_thinking_tokens_per_step'].mean():.1f} | {df_fail['total_thinking_tokens'].mean():.1f} / {df_fail['avg_thinking_tokens_per_turn'].mean():.1f} / {df_fail['avg_thinking_tokens_per_step'].mean():.1f} |\n"
         md += f"| **Turns** | {df_success['turn_count'].mean():.1f} | {df_fail['turn_count'].mean():.1f} |\n"
         md += f"| **Steps** | {df_success['step_count'].mean():.1f} | {df_fail['step_count'].mean():.1f} |\n"
         md += f"| **LLM Latency (Total)** | {df_success['total_llm_latency_sec'].mean():.2f}s | {df_fail['total_llm_latency_sec'].mean():.2f}s |\n"
@@ -421,16 +430,21 @@ def safe_int(val):
 
 # --- Execution ---
 if __name__ == "__main__":
-    target_tags = ["ptc-fc", "OpenAI/gpt-5-mini-2025-08-07"]
+    ptc_tags = ["ptc-fc", "regular-fc"]
+    model_tags = ["OpenAI/gpt-5-mini-2025-08-07"]
+    # target_tags = ["ptc-fc", "OpenAI/gpt-5-mini-2025-08-07"]
 
-    calculator = MetricsCalculator(target_tags)
+    for pt in ptc_tags:
+        for mt in model_tags:
+            target_tags = [pt, mt]
+            calculator = MetricsCalculator(target_tags)
 
-    # traces = calculator.fetch_traces_by_tags(target_tags)
-    traces = calculator.fetch_10_traces_by_tags(target_tags)
+            # traces = calculator.fetch_traces_by_tags(target_tags)
+            traces = calculator.fetch_top_traces_by_tags(target_tags, 100)
 
-    for i, trace in enumerate(traces):
-        calculator.process_trace(trace)
-        if (i + 1) % 50 == 0:
-            print(f"Processed {i + 1}/{len(traces)} traces...")
+            for i, trace in enumerate(traces):
+                calculator.process_trace(trace)
+                if (i + 1) % 50 == 0:
+                    print(f"Processed {i + 1}/{len(traces)} traces...")
 
-    calculator.generate_report()
+            calculator.generate_report()
