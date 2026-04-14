@@ -353,10 +353,9 @@ class MetricsCalculator:
             md += f"| {r['category']} | {r['success_rate']:.1f}% | {r['avg_input']:.1f} | {r['avg_output']:.1f} | {r['avg_thinking']:.1f} | {r['avg_turns']:.1f} | {r['avg_steps']:.1f} | {latency_str} | {ctx_str} | {r['avg_runtime_err']:.2f} | {r['avg_tool_err']:.2f} | {r['avg_redundant']:.2f} | {sc_rt_rate:.1f}% | {sc_tool_rate:.1f}% |\n"
 
         # Save files
-        timestamp = int(time.time())
-        raw_csv_path = self.output_dir / f"metrics_raw_{timestamp}.csv"
+        raw_csv_path = self.output_dir / f"metrics_data.csv"
         summary_md_path = self.output_dir / "summary.md"
-        plot_filename = self.output_dir / f"context_dropoff_plot_{timestamp}.png"
+        plot_filename = self.output_dir / f"context_dropoff_plot.pdf"
 
         plt.figure(figsize=(9, 5))
         if df['total_input_tokens'].nunique() > 1:
