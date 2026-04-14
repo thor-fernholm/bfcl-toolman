@@ -21,8 +21,9 @@ RUN_CONFIG = {
     "enable_ptc": True,
     # "bellman_model": "OpenAI/gpt-4o-mini",
     "bellman_model": "OpenAI/gpt-5-mini-2025-08-07",
-    "temperature": 0,
-    "num_threads": 1,
+    "temperature": None,
+    "thinking": 1,
+    "num_threads": 25,
     "num_gpus": 1,
     "gpu_memory_utilization": 0.9,
     "backend": "vllm",
@@ -46,11 +47,15 @@ class ToolmanWrapper(ToolmanHandler):
         # Inject our custom config into the handler
         kwargs["enable_ptc"] = RUN_CONFIG["enable_ptc"]
         kwargs["bellman_model"] = RUN_CONFIG["bellman_model"]
+        kwargs["thinking"] = RUN_CONFIG["thinking"]
         super().__init__(model_name, temperature, registry_name, is_fc_model, **kwargs)
 
 def run_evaluation():
     os.environ["TOOLMAN_ENABLE_PTC"] = str(RUN_CONFIG["enable_ptc"])
     os.environ["TOOLMAN_BELLMAN_MODEL"] = RUN_CONFIG["bellman_model"]
+
+    if RUN_CONFIG["thinking"]:
+        os.environ["TOOLMAN_THINKING"] = str(RUN_CONFIG["thinking"])
 
     if RUN_CONFIG["enable_ptc"] == True:
         RUN_CONFIG["model"] = ["toolman-go-ptc"]
@@ -59,7 +64,7 @@ def run_evaluation():
     bellman_model = RUN_CONFIG["bellman_model"]
     RUN_CONFIG["model"] = f"{ptc_flag}-{bellman_model}"
 
-    print(f"🚀 Starting Benchmark: {RUN_CONFIG['model'][0]} (PTC={RUN_CONFIG['enable_ptc']})")
+    print(f"🚀 Starting Benchmark: {RUN_CONFIG['model'][0]} (PTC={RUN_CONFIG['enable_ptc']}, Thinking={RUN_CONFIG['thinking']})")
 
     # 1. Create the robust arguments object
     args = MockArgs(**RUN_CONFIG)

@@ -29,6 +29,13 @@ class ToolmanHandler(BaseHandler):
             kwargs.get("bellman_model", "OpenAI/gpt-4o-mini")
         )
 
+        # Handle 'thinking' *int value, None=off
+        thinking = os.getenv("TOOLMAN_THINKING")
+        if thinking is not None:
+            self.thinking = int(thinking)
+        else:
+            self.thinking = kwargs.get("thinking", None) # Default
+
     def _query_FC(self, inference_data: dict):
         payload = {
             "messages": inference_data["message"],
@@ -39,7 +46,8 @@ class ToolmanHandler(BaseHandler):
             "system_prompt": inference_data.get("system_prompt", ""),
             "enable_ptc": self.enable_ptc,
             "bellman_model": self.bellman_model,
-            "test_entry_id": inference_data["test_entry_id"]
+            "test_entry_id": inference_data["test_entry_id"],
+            "thinking": self.thinking,
         }
 
         start = time.time()
