@@ -214,63 +214,112 @@ class MetricsCalculator:
 
         df = pd.DataFrame(self.results)
         df['success'] = df['success'].astype(int)
-
-        # Filter successes and failures
-        df_success = df[df['success'] == 1]
-        df_fail = df[df['success'] == 0]
-
-        # Calculate specific global metrics
-        global_success_rate = df['success'].mean() * 100
-
-        traces_with_runtime_errors = len(df[df['runtime_error_count'] > 0])
-        self_corrected_runtime_rate = (len(df[df['self_corrected_runtime'] == True]) / traces_with_runtime_errors * 100) if traces_with_runtime_errors > 0 else 0.0
-        traces_with_tool_errors = len(df[df['tool_error_count'] > 0])
-        self_corrected_tool_rate = (len(df[df['self_corrected_tool'] == True]) / traces_with_tool_errors * 100) if traces_with_tool_errors > 0 else 0.0
+        df['self_corrected_runtime'] = df['self_corrected_runtime'].astype(int)
+        df['self_corrected_tool'] = df['self_corrected_tool'].astype(int)
 
         # Build Markdown content
         md = f"# Benchmark Metrics: `{' | '.join(self.target_tags)}`\n\n"
-        md += f"**Total Tests Run:** {len(df)}\n"
-        md += f"**Global Success Rate:** {global_success_rate:.2f}%\n\n"
 
-        md += "## 1. Operational Efficiency & Latency Trade-offs\n"
-        md += "| Metric | All Tests | Successes | Failures |\n"
-        md += "|---|---|---|---|\n"
-        md += f"| **Avg Input Tokens** | {df['total_input_tokens'].mean():.1f} | {df_success['total_input_tokens'].mean():.1f} | {df_fail['total_input_tokens'].mean():.1f} |\n"
-        md += f"| **Avg Output Tokens** | {df['total_output_tokens'].mean():.1f} | {df_success['total_output_tokens'].mean():.1f} | {df_fail['total_output_tokens'].mean():.1f} |\n"
-        md += f"| **Avg Thinking Tokens** | {df['total_thinking_tokens'].mean():.1f} | {df_success['total_thinking_tokens'].mean():.1f} | {df_fail['total_thinking_tokens'].mean():.1f} |\n"
-        md += f"| **Avg Latency (Total)** | {df['total_llm_latency_sec'].mean():.2f}s | {df_success['total_llm_latency_sec'].mean():.2f}s | {df_fail['total_llm_latency_sec'].mean():.2f}s |\n"
-        md += f"| **Avg Latency (Per Turn)** | {df['avg_llm_latency_per_turn_sec'].mean():.2f}s | {df_success['avg_llm_latency_per_turn_sec'].mean():.2f}s | {df_fail['avg_llm_latency_per_turn_sec'].mean():.2f}s |\n"
-        md += f"| **Total Context Growth** | {df['context_growth_total'].mean():.1f} | {df_success['context_growth_total'].mean():.1f} | {df_fail['context_growth_total'].mean():.1f} |\n"
-        md += f"| **Context Growth (Per Step)**| {df['avg_context_growth_per_step'].mean():.1f} | {df_success['avg_context_growth_per_step'].mean():.1f} | {df_fail['avg_context_growth_per_step'].mean():.1f} |\n\n"
+        # --- 1. GLOBAL TOTALS & AVERAGES ---
+        md += "## 1. Global Totals & Averages\n"
 
-        md += "## 2. Robustness, Errors & Hallucinations\n"
-        md += f"- **Self-Correction runtime Success Rate:** {self_corrected_runtime_rate:.2f}% *(Solved {len(df[df['self_corrected_runtime']==True])} out of {traces_with_runtime_errors} tests that encountered a runtime error)*\n"
-        md += f"- **Self-Correction tool Success Rate:** {self_corrected_tool_rate:.2f}% *(Solved {len(df[df['self_corrected_tool']==True])} out of {traces_with_tool_errors} tests that encountered a tool error)*\n"
-        md += f"- **Avg Runtime Errors (Syntax/Goja):** {df['runtime_error_count'].mean():.2f} per test\n"
-        md += f"- **Avg Tool Constraints Errors (BFCL):** {df['tool_error_count'].mean():.2f} per test\n"
-        md += f"- **Avg Redundant Tool Calls:** {df['redundant_tool_calls'].mean():.2f} per test *(Proxy for hallucination/forgetfulness)*\n"
-        md += f"- **Avg Task Horizon Length (Turns):** {df['turn_count'].mean():.2f} turns per test\n\n"
+        total_tests = len(df)
+        successes = df['success'].sum()
+        global_success_rate = (successes / total_tests * 100) if total_tests else 0.0
 
-        md += "## 3. Breakdown by Category\n"
+        traces_with_rt_errors = len(df[df['runtime_error_count'] > 0])
+        total_sc_rt = df['self_corrected_runtime'].sum()
+        sc_rt_rate = (total_sc_rt / traces_with_rt_errors * 100) if traces_with_rt_errors > 0 else 0.0
+
+        traces_with_tool_errors = len(df[df['tool_error_count'] > 0])
+        total_sc_tool = df['self_corrected_tool'].sum()
+        sc_tool_rate = (total_sc_tool / traces_with_tool_errors * 100) if traces_with_tool_errors > 0 else 0.0
+
+        md += "| Metric | Total (Sum) | Average (Mean per test) |\n"
+        md += "|---|---|---|\n"
+        md += f"| **Tests Run** | {total_tests} | - |\n"
+        md += f"| **Successes** | {successes} | {global_success_rate:.2f}% (Success Rate) |\n"
+        md += f"| **Input Tokens** | {df['total_input_tokens'].sum():.0f} | {df['total_input_tokens'].mean():.1f} |\n"
+        md += f"| **Output Tokens** | {df['total_output_tokens'].sum():.0f} | {df['total_output_tokens'].mean():.1f} |\n"
+        md += f"| **Thinking Tokens** | {df['total_thinking_tokens'].sum():.0f} | {df['total_thinking_tokens'].mean():.1f} |\n"
+        md += f"| **LLM Latency (sec)** | {df['total_llm_latency_sec'].sum():.2f}s | {df['total_llm_latency_sec'].mean():.2f}s (Total) / {df['avg_llm_latency_per_turn_sec'].mean():.2f}s (Per Turn) |\n"
+        md += f"| **Runtime Errors (Goja)** | {df['runtime_error_count'].sum()} | {df['runtime_error_count'].mean():.2f} |\n"
+        md += f"| **Tool Errors (BFCL)** | {df['tool_error_count'].sum()} | {df['tool_error_count'].mean():.2f} |\n"
+        md += f"| **Redundant Tool Calls** | {df['redundant_tool_calls'].sum()} | {df['redundant_tool_calls'].mean():.2f} |\n"
+        md += f"| **Self-Correct (Runtime)** | {total_sc_rt} (out of {traces_with_rt_errors} err traces) | {sc_rt_rate:.1f}% (Recovery Rate) |\n"
+        md += f"| **Self-Correct (Tool)** | {total_sc_tool} (out of {traces_with_tool_errors} err traces) | {sc_tool_rate:.1f}% (Recovery Rate) |\n"
+        md += f"| **Context Growth** | - | {df['context_growth_total'].mean():.1f} tokens (Total) / {df['avg_context_growth_per_step'].mean():.1f} tokens (Per Step) |\n\n"
+
+        # --- 2. SPLIT BY SUCCESS/FAIL ---
+        df_success = df[df['success'] == 1]
+        df_fail = df[df['success'] == 0]
+
+        md += "## 2. Averages by Outcome (Success vs. Failure)\n"
+        md += "| Metric | Successes | Failures |\n"
+        md += "|---|---|---|\n"
+        md += f"| **Input Tokens** | {df_success['total_input_tokens'].mean():.1f} | {df_fail['total_input_tokens'].mean():.1f} |\n"
+        md += f"| **Output Tokens** | {df_success['total_output_tokens'].mean():.1f} | {df_fail['total_output_tokens'].mean():.1f} |\n"
+        md += f"| **Thinking Tokens** | {df_success['total_thinking_tokens'].mean():.1f} | {df_fail['total_thinking_tokens'].mean():.1f} |\n"
+        md += f"| **LLM Latency (Total)** | {df_success['total_llm_latency_sec'].mean():.2f}s | {df_fail['total_llm_latency_sec'].mean():.2f}s |\n"
+        md += f"| **LLM Latency (Per Turn)** | {df_success['avg_llm_latency_per_turn_sec'].mean():.2f}s | {df_fail['avg_llm_latency_per_turn_sec'].mean():.2f}s |\n"
+        md += f"| **Context Growth (Total)** | {df_success['context_growth_total'].mean():.1f} | {df_fail['context_growth_total'].mean():.1f} |\n"
+        md += f"| **Context Growth (Per Step)**| {df_success['avg_context_growth_per_step'].mean():.1f} | {df_fail['avg_context_growth_per_step'].mean():.1f} |\n\n"
+
+        # --- 3. BREAKDOWN BY CATEGORY ---
+        md += "## 3. Breakdown by Category\n\n"
 
         # Calculate Category Aggregations
         cat_df = df.groupby('category').agg(
             tests=('test_id', 'count'),
+            successes=('success', 'sum'),
             success_rate=('success', lambda x: x.mean() * 100),
-            avg_turns=('turn_count', 'mean'),
-            avg_latency=('total_llm_latency_sec', 'mean'),
+
+            sum_input=('total_input_tokens', 'sum'),
             avg_input=('total_input_tokens', 'mean'),
+            sum_output=('total_output_tokens', 'sum'),
+            avg_output=('total_output_tokens', 'mean'),
+            sum_thinking=('total_thinking_tokens', 'sum'),
+            avg_thinking=('total_thinking_tokens', 'mean'),
+
+            sum_latency=('total_llm_latency_sec', 'sum'),
+            avg_latency=('total_llm_latency_sec', 'mean'),
+            avg_latency_turn=('avg_llm_latency_per_turn_sec', 'mean'),
+
+            avg_ctx_total=('context_growth_total', 'mean'),
+            avg_ctx_step=('avg_context_growth_per_step', 'mean'),
+
+            sum_runtime_err=('runtime_error_count', 'sum'),
             avg_runtime_err=('runtime_error_count', 'mean'),
-            avg_redundant_calls=('redundant_tool_calls', 'mean')
+            sum_tool_err=('tool_error_count', 'sum'),
+            avg_tool_err=('tool_error_count', 'mean'),
+
+            sum_redundant=('redundant_tool_calls', 'sum'),
+            avg_redundant=('redundant_tool_calls', 'mean'),
+
+            sum_sc_rt=('self_corrected_runtime', 'sum'),
+            err_traces_rt=('runtime_error_count', lambda x: (x > 0).sum()),
+            sum_sc_tool=('self_corrected_tool', 'sum'),
+            err_traces_tool=('tool_error_count', lambda x: (x > 0).sum())
         ).reset_index()
 
-        # Build Markdown Table
-        md += "| Category | Tests | Success Rate | Avg Turns | Avg Latency | Avg Input Tokens | Runtime Errs | Redundant Calls |\n"
-        md += "|---|---|---|---|---|---|---|---|\n"
-        for _, row in cat_df.iterrows():
-            md += f"| {row['category']} | {row['tests']} | {row['success_rate']:.1f}% | {row['avg_turns']:.1f} | {row['avg_latency']:.2f}s | {row['avg_input']:.0f} | {row['avg_runtime_err']:.2f} | {row['avg_redundant_calls']:.2f} |\n"
+        md += "### Category Totals\n"
+        md += "| Category | Tests | Successes | Input Tks | Output Tks | LLM Latency | Runtime Errs | Tool Errs | Redundant Calls | SC (Runtime) | SC (Tool) |\n"
+        md += "|---|---|---|---|---|---|---|---|---|---|---|\n"
+        for _, r in cat_df.iterrows():
+            md += f"| {r['category']} | {r['tests']} | {r['successes']} | {r['sum_input']:.0f} | {r['sum_output']:.0f} | {r['sum_latency']:.2f}s | {r['sum_runtime_err']} | {r['sum_tool_err']} | {r['sum_redundant']} | {r['sum_sc_rt']} | {r['sum_sc_tool']} |\n"
 
-        # Save files to the newly created directory
+        md += "\n### Category Averages\n"
+        md += "| Category | Success Rate | Input Tks | Output Tks | Latency (Tot/Turn) | Ctx Growth (Tot/Step) | Runtime Errs | Tool Errs | Redundant | RT Recovery % | Tool Recovery % |\n"
+        md += "|---|---|---|---|---|---|---|---|---|---|---|\n"
+        for _, r in cat_df.iterrows():
+            sc_rt_rate = (r['sum_sc_rt'] / r['err_traces_rt'] * 100) if r['err_traces_rt'] > 0 else 0.0
+            sc_tool_rate = (r['sum_sc_tool'] / r['err_traces_tool'] * 100) if r['err_traces_tool'] > 0 else 0.0
+            latency_str = f"{r['avg_latency']:.2f}s / {r['avg_latency_turn']:.2f}s"
+            ctx_str = f"{r['avg_ctx_total']:.1f} / {r['avg_ctx_step']:.1f}"
+
+            md += f"| {r['category']} | {r['success_rate']:.1f}% | {r['avg_input']:.1f} | {r['avg_output']:.1f} | {latency_str} | {ctx_str} | {r['avg_runtime_err']:.2f} | {r['avg_tool_err']:.2f} | {r['avg_redundant']:.2f} | {sc_rt_rate:.1f}% | {sc_tool_rate:.1f}% |\n"
+
+        # Save files
         timestamp = int(time.time())
         raw_csv_path = self.output_dir / f"metrics_raw_{timestamp}.csv"
         summary_md_path = self.output_dir / "summary.md"
@@ -284,9 +333,6 @@ class MetricsCalculator:
         print("="*50)
         print(f"-> Raw Data: {raw_csv_path.name}")
         print(f"-> Summary:  summary.md\n")
-
-        # Print a snippet of the MD to console
-        print(md[:500] + "\n...\n")
 
         return df
 
