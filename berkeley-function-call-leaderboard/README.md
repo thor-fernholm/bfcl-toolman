@@ -1,29 +1,39 @@
 # Toolman
 
-This is a fork of BFCL (part of gorilla), that integrates with [Toolman](https://github.com/thor-fernholm/toolman).
+This is a (manual) fork of BFCL V4 (part of gorilla), that integrates with [Toolman](https://github.com/thor-fernholm/toolman).
 
+## Setup
 Activate conda env: `conda activate bfcl`
 
 Install Langfuse: `pip install langfuse`, pandas `pip install pandas`, and matplotlib `pip install matplotlib`.
-
-Run benchmark by running file: `run_benchmark.py`
-
-Run eval:
-
-```bash
-bfcl evaluate --model toolman-go-ptc --partial-eval 
-```
-
-Specific model:
-```bash
-bfcl evaluate --model ptc-fc-OpenAI/gpt-5-mini-2025-08-07 --partial-eval
-```
 
 Set `BFCL_PROJECT_ROOT` as an environment variable in your shell environment (needs to be set again on project restart):
 
 ```bash
 export BFCL_PROJECT_ROOT=/home/thor/IdeaProjects/bfcl-toolman/berkeley-function-call-leaderboard
 ```
+
+## Benchmark
+
+### Run benchmark
+Run benchmark by running file: `benchmark.py`
+
+### Evaluate results
+Run evaluation:
+
+```bash
+bfcl evaluate --model toolman-go-ptc --partial-eval 
+```
+
+Or specific model/test run:
+```bash
+bfcl evaluate --model ptc-fc-OpenAI/gpt-5-mini-2025-08-07 --partial-eval
+```
+
+### Custom Metrics
+Calculate automatic custom metrics from collected traces by running file: `trace_metrics.py`.
+
+PS. Ensure Langfuse client is running.
 
 # Berkeley Function Calling Leaderboard (BFCL)
 

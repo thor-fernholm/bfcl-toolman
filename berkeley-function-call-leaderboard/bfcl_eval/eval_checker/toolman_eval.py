@@ -3,6 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 import time
+import re
 
 root_env_path = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(root_env_path)
@@ -35,6 +36,7 @@ def score_langfuse_trace(test_id, model_name, success):
             trace_id=trace_id,
             name="success",
             value=success,
+            # value=1.0 if success else 0.0,
             data_type="BOOLEAN",
         )
     except Exception as e:
@@ -50,6 +52,7 @@ def get_trace_id_by_tags(test_id, model_name, retries=3, sleep_seconds=0.01):
         try:
             traces = langfuse.api.trace.list(
                 # page=1,
+                name=test_id,
                 limit=10,
                 tags=tags,
             ).data
@@ -71,9 +74,10 @@ def make_trace_tags(test_id, model_name):
     # model_name = f"{ptc_flag}-{bellman_model}"
     ptc_flag = "ptc-fc" if "ptc-fc" in model_name else "regular-fc"
     bellman_model = model_name.replace(f"{ptc_flag}-", "").replace("_","/")
+    category_id = re.sub(r'_\d+$', '', test_id)
 
     return [
-        test_id,
+        category_id,
         ptc_flag,
         bellman_model,
     ]

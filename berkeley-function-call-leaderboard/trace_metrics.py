@@ -8,9 +8,12 @@ from dotenv import load_dotenv
 from langfuse import Langfuse
 import pandas as pd
 import matplotlib.pyplot as plt
+import concurrent.futures
+from tqdm import tqdm
 
 # Load Environment Variables
-root_env_path = Path(__file__).resolve().parent / ".env"
+parent_path = Path(__file__).resolve().parent
+root_env_path = parent_path / ".env"
 load_dotenv(root_env_path)
 
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
@@ -70,9 +73,9 @@ class MetricsCalculator:
         print(f"Found {len(all_traces)} traces.")
         return all_traces
 
-    def fetch_trace_observations(self, trace_id, max_pages=100):
+    def fetch_trace_observations(self, trace_id, max_pages=100): #TODO do we need to loop pages?
         """Fetches all observations attached to a specific trace."""
-        return langfuse.api.legacy.observations_v1.get_many(trace_id=trace.id, limit=100).data
+        return langfuse.api.legacy.observations_v1.get_many(trace_id=trace_id, limit=100).data
 
     def fetch_trace_scores(self, trace_id):
         """Fetches all scores attached to a specific trace."""
@@ -89,12 +92,38 @@ class MetricsCalculator:
         # Removes the trailing underscore and number
         return re.sub(r'_\d+$', '', test_id)
 
+    def process_all_traces(self, traces, max_workers=10):
+        """
+        Processes traces concurrently using threads.
+        max_workers: Adjust based on Langfuse rate limits.
+        """
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(self.process_trace, t): t for t in traces}
+
+            for future in tqdm(concurrent.futures.as_completed(futures),
+                               total=len(traces),
+                               desc="Fetching Langfuse Data"):
+                try:
+                    data = future.result()
+                    if data:
+                        self.results.append(data)
+                except Exception as e:
+                    # Get the specific trace that failed from our mapping
+                    trace_obj = futures[future]
+                    print(f"\nTrace {trace_obj.id} generated an exception: {e}")
+
+
     def process_trace(self, trace):
         """Calculates metrics for a single trace (test case)."""
         observations = self.fetch_trace_observations(trace.id)
-        scores = self.fetch_trace_scores(trace.id)
         test_id = trace.name
+        scores = self.fetch_trace_scores(trace.id)
         is_success = scores.get("success", False)
+
+        if not scores: # TODO do something here or not?
+            # print(f"\nTrace {trace.id} has no score.")
+            return
 
         # Sort observations chronologically to properly calculate context growth over time
         observations = sorted(observations, key=lambda x: getattr(x, 'start_time', None) or datetime.datetime.min)
@@ -231,7 +260,7 @@ class MetricsCalculator:
             trace_metrics["avg_thinking_tokens_per_step"] = trace_metrics["total_thinking_tokens"] / trace_metrics["step_count"]
             trace_metrics["avg_llm_latency_per_step_sec"] = trace_metrics["total_llm_latency_sec"] / trace_metrics["step_count"]
 
-        self.results.append(trace_metrics)
+        return trace_metrics
 
 
     def generate_report(self):
@@ -431,20 +460,21 @@ def safe_int(val):
 # --- Execution ---
 if __name__ == "__main__":
     ptc_tags = ["ptc-fc", "regular-fc"]
-    model_tags = ["OpenAI/gpt-5-mini-2025-08-07"]
-    # target_tags = ["ptc-fc", "OpenAI/gpt-5-mini-2025-08-07"]
+    # model_tags = ["OpenAI/gpt-5-mini-2025-08-07", "vLLM/google/gemma-4-E4B-it"]
+    model_tags = ["vLLM/google/gemma-4-E4B-it"]
 
     for pt in ptc_tags:
         for mt in model_tags:
             target_tags = [pt, mt]
             calculator = MetricsCalculator(target_tags)
 
-            # traces = calculator.fetch_traces_by_tags(target_tags)
-            traces = calculator.fetch_top_traces_by_tags(target_tags, 100)
+            traces = calculator.fetch_traces_by_tags(target_tags)
+            # traces = calculator.fetch_top_traces_by_tags(target_tags, 100)
 
-            for i, trace in enumerate(traces):
-                calculator.process_trace(trace)
-                if (i + 1) % 50 == 0:
-                    print(f"Processed {i + 1}/{len(traces)} traces...")
+            # # match traces to results file (test is in result)
+            # with open(parent_path.as_uri()+"/result/bench_results.jsonl", "r", encoding="utf-8") as f:
+            #     bench_ids = [json.loads(line)["id"] for line in f if line.strip()]
+
+            calculator.process_all_traces(traces, 20)
 
             calculator.generate_report()
