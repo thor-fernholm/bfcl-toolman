@@ -46,7 +46,8 @@ def get_trace_id_by_tags(test_id, model_name, retries=3, sleep_seconds=0.01):
     """
     Look up the Langfuse trace by tag and return its trace_id.
     """
-    tags = make_trace_tags(test_id, model_name)
+    # tags = make_trace_tags(test_id, model_name)
+    tags = make_trace_tags(model_name)
     # print("tags:", tags)
     for attempt in range(retries):
         try:
@@ -70,14 +71,14 @@ def get_trace_id_by_tags(test_id, model_name, retries=3, sleep_seconds=0.01):
     return None
 
 
-def make_trace_tags(test_id, model_name):
+def make_trace_tags(model_name):
     # model_name = f"{ptc_flag}-{bellman_model}"
     ptc_flag = "ptc-fc" if "ptc-fc" in model_name else "regular-fc"
     bellman_model = model_name.replace(f"{ptc_flag}-", "").replace("_","/")
-    category_id = re.sub(r'_\d+$', '', test_id)
+    # category_id = re.sub(r'_\d+$', '', test_id)
 
     return [
-        category_id,
+        # category_id,
         ptc_flag,
         bellman_model,
     ]

@@ -1,174 +1,160 @@
 import os
-import time
 import re
 import json
 import datetime
 from pathlib import Path
 from dotenv import load_dotenv
-from langfuse import Langfuse
 import pandas as pd
 import matplotlib.pyplot as plt
-import concurrent.futures
-
-from sympy import true
 from tqdm import tqdm
+import clickhouse_connect
 
 # Load Environment Variables
 parent_path = Path(__file__).resolve().parent
 root_env_path = parent_path / ".env"
 load_dotenv(root_env_path)
 
-LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
-LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
-LANGFUSE_BASE_URL = os.getenv("LANGFUSE_BASE_URL")
-
-if not LANGFUSE_SECRET_KEY or not LANGFUSE_PUBLIC_KEY or not LANGFUSE_BASE_URL:
-    raise ValueError("Missing Langfuse environment variables in .env")
-
-langfuse = Langfuse(
-    public_key=LANGFUSE_PUBLIC_KEY,
-    secret_key=LANGFUSE_SECRET_KEY,
-    host=LANGFUSE_BASE_URL,
-)
+# You may need to add these to your .env if they differ from the defaults below
+CLICKHOUSE_HOST = os.getenv("CLICKHOUSE_HOST", "localhost")
+CLICKHOUSE_PORT = int(os.getenv("CLICKHOUSE_PORT", 8123))
+CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER", "clickhouse")
+CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD", "clickhouse")
 
 class MetricsCalculator:
-    def __init__(self, target_tags):
+    def __init__(self, ptc_t, model_t):
         self.results = []
-        self.target_tags = target_tags
-        # Create a safe folder name from the tags (e.g., ptc-fc_OpenAI_gpt-5-mini)
-        safe_tag_name = "-".join(target_tags).replace("/", "_").replace("\\", "_")
-        self.output_dir = Path(f"custom_metrics/{safe_tag_name}")
+        self.target_tags = [ptc_t, model_t]
+        # Create a safe folder name from the tags
+        safe_ptc_tag = ptc_t.replace("/", "_").replace("\\", "_")
+        safe_model_tag = model_t.replace("/", "_").replace("\\", "_")
+        self.output_dir = Path(f"metrics/{safe_model_tag}/{safe_ptc_tag}")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def fetch_top_traces_by_tags(self, tags, top, max_pages=10):
-        """Fetches all traces matching the given tags handling pagination."""
-        print(f"Fetching traces for tags: {tags}...")
-        all_traces = []
-        page = 1
+        # Initialize ClickHouse Client
+        print(f"Connecting to ClickHouse at {CLICKHOUSE_HOST}:{CLICKHOUSE_PORT}...")
+        self.client = clickhouse_connect.get_client(
+            host=CLICKHOUSE_HOST,
+            port=CLICKHOUSE_PORT,
+            username=CLICKHOUSE_USER,
+            password=CLICKHOUSE_PASSWORD
+        )
 
-        while page <= max_pages:
-            response = langfuse.api.trace.list(tags=tags, page=page, limit=100)
-            if not response.data:
-                break
-            all_traces.extend(response.data)
-            page += 1
-            if len(all_traces) >= top:
-                all_traces = all_traces[:top]
-                break
+    def fetch_all_data_from_db(self):
+        """Fetches Traces, Observations, and Scores in 3 bulk queries."""
+        print(f"Fetching data for tags: {self.target_tags}...")
 
-        print(f"Found top {len(all_traces)} traces.")
-        return all_traces
+        # 1. Fetch Traces
+        # ClickHouse hasAll() checks if the array contains all specified tags
+        tags_formatted = ", ".join([f"'{t}'" for t in self.target_tags])
+        traces_query = f"SELECT id, name FROM traces WHERE hasAll(tags, [{tags_formatted}])"
+        traces_df = self.client.query_df(traces_query)
 
-    def fetch_traces_by_tags(self, tags, max_pages=100):
-        """Fetches all traces matching the given tags handling pagination."""
-        print(f"Fetching traces for tags: {tags}...")
-        all_traces = []
-        page = 1
+        if traces_df.empty:
+            print("No traces found matching those tags.")
+            return None, None, None
 
-        while page <= max_pages:
-            response = langfuse.api.trace.list(tags=tags, page=page, limit=100)
-            if not response.data:
-                break
-            all_traces.extend(response.data)
-            page += 1
+        trace_ids = traces_df['id'].tolist()
+        print(f"Found {len(trace_ids)} traces. Fetching nested data...")
 
-        print(f"Found {len(all_traces)} traces.")
-        return all_traces
+        # Format for SQL IN clause
+        if len(trace_ids) == 1:
+            trace_ids_str = f"('{trace_ids[0]}')"
+        else:
+            trace_ids_str = str(tuple(trace_ids))
 
-    def fetch_trace_observations(self, trace_id, max_pages=1000):
-        """Fetches all observations attached to a specific trace."""
-        observations = []
-        page = 1
-        max_retries = 5
+        # 2. Fetch Observations
+        obs_query = f"""
+            SELECT trace_id, id, name, start_time, end_time, type, level, metadata
+            FROM observations
+            WHERE trace_id IN {trace_ids_str}
+        """
+        obs_df = self.client.query_df(obs_query)
 
-        while True:
-            response = None
-            for attempt in range(max_retries):
-                try:
-                    response = langfuse.api.legacy.observations_v1.get_many(trace_id=trace_id, page=page, limit=100)
-                    break  # Success, exit retry loop
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise Exception(f"Failed to fetch observations after {max_retries} attempts: {e}")
-                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s, 8s...
+        # 3. Fetch Scores
+        scores_query = f"""
+            SELECT trace_id, name, value
+            FROM scores
+            WHERE trace_id IN {trace_ids_str}
+        """
+        scores_df = self.client.query_df(scores_query)
 
-            if not response or not response.data:
-                break
-
-            observations.extend(response.data)
-
-            # If we received fewer than the limit, we're on the last page
-            if len(response.data) < 100:
-                break
-
-            page += 1
-
-        return observations
-        # return langfuse.api.legacy.observations_v1.get_many(trace_id=trace_id, limit=100).data
-
-    def fetch_trace_scores(self, trace_id):
-        """Fetches all scores attached to a specific trace."""
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                scores = langfuse.api.scores.get_many(trace_id=trace_id).data
-                return {score.name: score.value for score in scores}
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    raise Exception(f"Failed to fetch scores after {max_retries} attempts: {e}")
-                time.sleep(2 ** attempt)
-        # scores = langfuse.api.scores.get_many(trace_id=trace_id).data
-        # return {score.name: score.value for score in scores}
+        print(f"Loaded {len(obs_df)} observations and {len(scores_df)} scores.")
+        return traces_df, obs_df, scores_df
 
     def extract_category(self, test_id):
-        """
-        Extracts the benchmark category from the test_id.
-        Example: 'multi_turn_base_42' -> 'multi_turn_base'
-        """
+        """Extracts the benchmark category from the test_id."""
         if not test_id:
             return "unknown"
-        # Removes the trailing underscore and number
-        return re.sub(r'_\d+$', '', test_id)
+        return re.sub(r'[-_]\d+(?:[-_]\d+)*$', '', test_id)
 
-    def process_all_traces(self, traces, max_workers=10):
+    def process_all_traces(self):
         """
-        Processes traces concurrently using threads.
-        max_workers: Adjust based on Langfuse rate limits.
+        Processes all data locally in memory using dictionaries.
+        No thread pools or API limits required.
         """
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(self.process_trace, t): t for t in traces}
-
-            for future in tqdm(concurrent.futures.as_completed(futures),
-                               total=len(traces),
-                               desc="Fetching Langfuse Data"):
-                try:
-                    data = future.result()
-                    if data:
-                        self.results.append(data)
-                except Exception as e:
-                    # Get the specific trace that failed from our mapping
-                    trace_obj = futures[future]
-                    print(f"\nTrace {trace_obj.id} generated an exception: {e}")
-
-
-    def process_trace(self, trace):
-        """Calculates metrics for a single trace (test case)."""
-        observations = self.fetch_trace_observations(trace.id)
-        test_id = trace.name
-        scores = self.fetch_trace_scores(trace.id)
-        is_success = scores.get("success", False)
-
-        if not scores: # TODO do something here or not?
-            # print(f"\nTrace {trace.id} has no score.")
+        traces_df, obs_df, scores_df = self.fetch_all_data_from_db()
+        if traces_df is None:
             return
 
-        # Sort observations chronologically to properly calculate context growth over time
-        observations = sorted(observations, key=lambda x: getattr(x, 'start_time', None) or datetime.datetime.min)
+        # Pre-group observations by trace_id for instant O(1) lookup
+        obs_dict = {}
+        if not obs_df.empty:
+            obs_records = obs_df.to_dict('records')
+            for obs in obs_records:
+                tid = obs['trace_id']
+                if tid not in obs_dict:
+                    obs_dict[tid] = []
+
+                # Parse ClickHouse JSON string into Python Dictionary
+                meta = obs.get('metadata')
+                if isinstance(meta, str) and meta.strip():
+                    try:
+                        obs['metadata'] = json.loads(meta)
+                    except json.JSONDecodeError:
+                        obs['metadata'] = {}
+                elif not meta:
+                    obs['metadata'] = {}
+
+                obs_dict[tid].append(obs)
+
+        # Pre-group scores by trace_id
+        scores_dict = {}
+        if not scores_df.empty:
+            scores_records = scores_df.to_dict('records')
+            for sc in scores_records:
+                tid = sc['trace_id']
+                if tid not in scores_dict:
+                    scores_dict[tid] = {}
+                scores_dict[tid][sc['name']] = sc['value']
+
+        # Process locally
+        traces_records = traces_df.to_dict('records')
+        for trace in tqdm(traces_records, total=len(traces_records), desc="Processing Traces"):
+            trace_id = trace['id']
+            test_id = trace['name']
+
+            trace_obs = obs_dict.get(trace_id, [])
+            trace_scores = scores_dict.get(trace_id, {})
+
+            data = self.process_trace(trace_id, test_id, trace_obs, trace_scores)
+            if data:
+                self.results.append(data)
+
+
+    def process_trace(self, trace_id, test_id, observations, scores):
+        """Calculates metrics for a single trace (test case) from dictionaries."""
+        is_success = scores.get("success", False)
+
+        if not scores:
+            return
+
+        # Sort observations chronologically
+        # DB start_time is already a pandas/python datetime object
+        observations = sorted(observations, key=lambda x: x.get('start_time') or datetime.datetime.min)
 
         # Initialize Trace-Level Metrics
         trace_metrics = {
-            "trace_id": trace.id,
+            "trace_id": trace_id,
             "test_id": test_id,
             "category": self.extract_category(test_id),
             "success": is_success,
@@ -181,9 +167,9 @@ class MetricsCalculator:
             "total_llm_latency_sec": 0.0,
             "step_count": 0,
             "turn_count": 0,
-            "error_count": 0,             # Langfuse general errors
-            "runtime_error_count": 0,     # Goja syntax/runtime errors
-            "tool_error_count": 0,        # Benchmark tool constraints
+            "error_count": 0,
+            "runtime_error_count": 0,
+            "tool_error_count": 0,
             "tool_call_count": 0,
             "avg_tool_calls_per_turn": 0.0,
             "redundant_tool_calls": 0,
@@ -194,28 +180,33 @@ class MetricsCalculator:
             "self_corrected_tool": False
         }
 
-        turn_latencies = {}
         seen_tools = set()
         step_input_tokens_sequence = []
 
-        # Iterate through the fully populated spans
         for obs in observations:
-            # OTel nests everything under an "attributes" key in the metadata dictionary
-            raw_metadata = obs.metadata or {}
+            raw_metadata = obs.get('metadata', {})
             attributes = raw_metadata.get("attributes", raw_metadata)
+
+            if isinstance(attributes, str):
+                try:
+                    attributes = json.loads(attributes)
+                except Exception:
+                    attributes = {}
+            elif not isinstance(attributes, dict):
+                attributes = {}
 
             span_type = attributes.get("bench.span_type")
             span_tag = attributes.get("bench.span_tag")
-            obs_name = getattr(obs, 'name', '') or ''
+            obs_name = obs.get('name', '') or ''
 
-            # Fallback checks (just in case)
+            # Fallback checks
             if not span_type:
                 if obs_name.startswith("chat"): span_type = "step"
                 elif obs_name.startswith("turn_"): span_type = "turn"
                 elif obs_name.startswith("execute_tool"): span_type = "tool"
 
             # Check for errors
-            if getattr(obs, 'level', '') == "ERROR":
+            if obs.get('level') == "ERROR":
                 trace_metrics["error_count"] += 1
             if span_tag == "runtime_error":
                 trace_metrics["runtime_error_count"] += 1
@@ -224,19 +215,16 @@ class MetricsCalculator:
 
             # Calculate Latency Safely
             span_latency = 0.0
-            if getattr(obs, 'latency', None) is not None:
-                span_latency = obs.latency
-            elif getattr(obs, 'start_time', None) and getattr(obs, 'end_time', None):
-                span_latency = (obs.end_time - obs.start_time).total_seconds()
+            start = obs.get('start_time')
+            end = obs.get('end_time')
+            if pd.notna(start) and pd.notna(end):
+                span_latency = (end - start).total_seconds()
 
             if span_type == "step":
                 trace_metrics["step_count"] += 1
                 step_input = 0
-                usage = getattr(obs, 'usage', None)
-                if usage:
-                    step_input += getattr(usage, 'input', 0) or 0
-                    trace_metrics["total_output_tokens"] += getattr(usage, 'output', 0) or 0
 
+                # Extract tokens purely from OTel metadata attributes
                 step_input += safe_int(attributes.get("gen_ai.usage.input_tokens", 0))
 
                 trace_metrics["total_input_tokens"] += step_input
@@ -266,16 +254,14 @@ class MetricsCalculator:
             trace_metrics["context_growth_total"] = step_input_tokens_sequence[-1] - step_input_tokens_sequence[0]
             trace_metrics["avg_context_growth_per_step"] = trace_metrics["context_growth_total"] / (len(step_input_tokens_sequence) - 1)
         elif len(step_input_tokens_sequence) == 1:
-            trace_metrics["context_growth_total"] = step_input_tokens_sequence[0] # Single step context size
+            trace_metrics["context_growth_total"] = step_input_tokens_sequence[0]
 
         # Self-Correction Check
-        # True if the trace ultimately succeeded despite encountering a runtime or tool error
         if is_success and trace_metrics["runtime_error_count"] > 0:
             trace_metrics["self_corrected_runtime"] = True
         if is_success and trace_metrics["tool_error_count"] > 0:
             trace_metrics["self_corrected_tool"] = True
 
-        # self-correction per turn
         if trace_metrics["turn_count"] > 1:
             trace_metrics["avg_context_growth_per_turn"] = trace_metrics["context_growth_total"] / (trace_metrics["turn_count"] - 1)
         elif trace_metrics["turn_count"] == 1:
@@ -283,15 +269,11 @@ class MetricsCalculator:
 
         if trace_metrics["turn_count"] > 0:
             trace_metrics["avg_tool_calls_per_turn"] = trace_metrics["tool_call_count"] / trace_metrics["turn_count"]
-
-        # Average tokens/latency per turn
-        if trace_metrics["turn_count"] > 0:
             trace_metrics["avg_input_tokens_per_turn"] = trace_metrics["total_input_tokens"] / trace_metrics["turn_count"]
             trace_metrics["avg_output_tokens_per_turn"] = trace_metrics["total_output_tokens"] / trace_metrics["turn_count"]
             trace_metrics["avg_thinking_tokens_per_turn"] = trace_metrics["total_thinking_tokens"] / trace_metrics["turn_count"]
             trace_metrics["avg_llm_latency_per_turn_sec"] = trace_metrics["total_llm_latency_sec"] / trace_metrics["turn_count"]
 
-        # Average tokens/latency per step
         if trace_metrics["step_count"] > 0:
             trace_metrics["avg_input_tokens_per_step"] = trace_metrics["total_input_tokens"] / trace_metrics["step_count"]
             trace_metrics["avg_output_tokens_per_step"] = trace_metrics["total_output_tokens"] / trace_metrics["step_count"]
@@ -370,41 +352,33 @@ class MetricsCalculator:
         # --- 3. BREAKDOWN BY CATEGORY ---
         md += "## 3. Breakdown by Category\n\n"
 
-        # Calculate Category Aggregations
         cat_df = df.groupby('category').agg(
             tests=('test_id', 'count'),
             successes=('success', 'sum'),
             success_rate=('success', lambda x: x.mean() * 100),
-
             sum_input=('total_input_tokens', 'sum'),
             avg_input=('total_input_tokens', 'mean'),
             sum_output=('total_output_tokens', 'sum'),
             avg_output=('total_output_tokens', 'mean'),
             sum_thinking=('total_thinking_tokens', 'sum'),
             avg_thinking=('total_thinking_tokens', 'mean'),
-
             sum_turns=('turn_count', 'sum'),
             avg_turns=('turn_count', 'mean'),
             sum_steps=('step_count', 'sum'),
             avg_steps=('step_count', 'mean'),
-
             sum_latency=('total_llm_latency_sec', 'sum'),
             avg_latency=('total_llm_latency_sec', 'mean'),
             avg_latency_turn=('avg_llm_latency_per_turn_sec', 'mean'),
             avg_latency_step=('avg_llm_latency_per_step_sec', 'mean'),
-
             avg_ctx_total=('context_growth_total', 'mean'),
             avg_ctx_turn=('avg_context_growth_per_turn', 'mean'),
             avg_ctx_step=('avg_context_growth_per_step', 'mean'),
-
             sum_runtime_err=('runtime_error_count', 'sum'),
             avg_runtime_err=('runtime_error_count', 'mean'),
             sum_tool_err=('tool_error_count', 'sum'),
             avg_tool_err=('tool_error_count', 'mean'),
-
             sum_redundant=('redundant_tool_calls', 'sum'),
             avg_redundant=('redundant_tool_calls', 'mean'),
-
             sum_sc_rt=('self_corrected_runtime', 'sum'),
             err_traces_rt=('runtime_error_count', lambda x: (x > 0).sum()),
             sum_sc_tool=('self_corrected_tool', 'sum'),
@@ -429,14 +403,13 @@ class MetricsCalculator:
             md += f"| {r['category']} | {r['success_rate']:.1f}% | {r['avg_input']:.1f} | {r['avg_output']:.1f} | {r['avg_thinking']:.1f} | {r['avg_turns']:.1f} | {r['avg_steps']:.1f} | {latency_str} | {ctx_str} | {r['avg_runtime_err']:.2f} | {r['avg_tool_err']:.2f} | {r['avg_redundant']:.2f} | {sc_rt_rate:.1f}% | {sc_tool_rate:.1f}% |\n"
 
         # Save files
-        raw_csv_path = self.output_dir / f"metrics_data.csv"
+        raw_csv_path = self.output_dir / "metrics_data.csv"
         summary_md_path = self.output_dir / "summary.md"
-        plot_filename = self.output_dir / f"context_dropoff_plot.pdf"
+        plot_filename = self.output_dir / "context_dropoff_plot.pdf"
 
         plt.figure(figsize=(9, 5))
         if df['total_input_tokens'].nunique() > 1:
             try:
-                # Bin context sizes into 5 quantiles
                 df['context_bin'] = pd.qcut(df['total_input_tokens'], q=5, duplicates='drop')
                 plot_df = df.groupby('context_bin', observed=False)['success'].mean() * 100
 
@@ -445,7 +418,6 @@ class MetricsCalculator:
                 plt.xlabel("Context Size Range (Total Input Tokens)", fontsize=12)
                 plt.ylabel("Success Rate (%)", fontsize=12)
 
-                # Format x-axis labels cleanly
                 labels = [f"{int(interval.left)} - {int(interval.right)}" for interval in plot_df.index]
                 ax.set_xticklabels(labels, rotation=45, ha='right')
                 plt.tight_layout()
@@ -455,7 +427,6 @@ class MetricsCalculator:
                 plot_filename = None
         plt.close()
 
-        # Write data to disk
         df.drop(columns=['context_bin'], errors='ignore').to_csv(raw_csv_path, index=False)
         with open(summary_md_path, "w", encoding="utf-8") as f:
             f.write(md)
@@ -470,16 +441,13 @@ class MetricsCalculator:
 
         return df
 
-# Bulletproof casting helper
 def safe_int(val):
     if val is None:
         return 0
-
-    # Handle if OTel passed it as a parsed Python dictionary
+    if pd.isna(val):
+        return 0
     if isinstance(val, dict):
         return safe_int(val.get('intValue', val.get('int_value', 0)))
-
-    # Handle if OTel passed it as a raw JSON string
     if isinstance(val, str):
         val = val.strip()
         if val.startswith('{') and val.endswith('}'):
@@ -488,8 +456,6 @@ def safe_int(val):
                 return safe_int(parsed.get('intValue', parsed.get('int_value', 0)))
             except Exception:
                 return 0
-
-    # Base case: attempt standard cast (float first to handle "12.0")
     try:
         return int(float(val))
     except (ValueError, TypeError):
@@ -498,23 +464,13 @@ def safe_int(val):
 # --- Execution ---
 if __name__ == "__main__":
     ptc_tags = ["ptc-fc", "regular-fc"]
-    # model_tags = ["OpenAI/gpt-5-mini-2025-08-07", "vLLM/google/gemma-4-E4B-it"]
-    # model_tags = ["vLLM/google/gemma-4-E4B-it"]
     model_tags = ["OpenAI/gpt-5-mini-2025-08-07"]
 
-    if False:
-        for pt in ptc_tags:
-            for mt in model_tags:
-                target_tags = [pt, mt]
-                calculator = MetricsCalculator(target_tags)
+    for ptc_t in ptc_tags:
+        for model_t in model_tags:
+            target_tags = [ptc_t, model_t]
+            calculator = MetricsCalculator(ptc_t, model_t)
 
-                traces = calculator.fetch_traces_by_tags(target_tags)
-                # traces = calculator.fetch_top_traces_by_tags(target_tags, 100)
-
-                # # match traces to results file (test is in result)
-                # with open(parent_path.as_uri()+"/result/bench_results.jsonl", "r", encoding="utf-8") as f:
-                #     bench_ids = [json.loads(line)["id"] for line in f if line.strip()]
-
-                calculator.process_all_traces(traces, 10)
-
-                calculator.generate_report()
+            # Replaced all API pagination and multithreading with a direct DB execution
+            calculator.process_all_traces()
+            calculator.generate_report()

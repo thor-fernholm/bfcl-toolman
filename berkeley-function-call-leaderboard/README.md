@@ -5,7 +5,7 @@ This is a (manual) fork of BFCL V4 (part of gorilla), that integrates with [Tool
 ## Setup
 Activate conda env: `conda activate bfcl`
 
-Install Langfuse: `pip install langfuse`, pandas `pip install pandas`, and matplotlib `pip install matplotlib`.
+Install Langfuse: `pip install langfuse`, pandas `pip install pandas`, clickhouse `pip install clickhouse-connect`, and matplotlib `pip install matplotlib`.
 
 Set `BFCL_PROJECT_ROOT` as an environment variable in your shell environment (needs to be set again on project restart):
 

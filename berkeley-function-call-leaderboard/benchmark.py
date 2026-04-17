@@ -12,32 +12,33 @@ from bfcl_eval.model_handler.toolman_handler import ToolmanHandler
 RUN_CONFIG = {
     "model": ["toolman-go"], # BFCL expects a list of models
     #"test_category": ["multi_turn"], # All multi-turn
-    "test_category": ["multi_turn_base"],
+    #"test_category": ["multi_turn_base"],
     #"test_category": ["single_turn"], # all single-turn
     #"test_category": ["simple_python", "simple_javascript", "simple_java"], # non-live simple
     #"test_category": ["parallel", "parallel_multiple", "live_parallel", "live_parallel_multiple"], # We skip parallel tests as execution replay is not supported for these
     #"test_category": ["memory_kv", "memory_vector", "memory_rec_sum", "web_search_base", "web_search_no_snippet", "format_sensitivity"], # We skip agentic tests as these test model reasoning capabilities more than tool-calling
     #"test_category": ["format_sensitivity"], # We skip format sensitivity as this is not a "prompting" model
-    # "test_category": ["simple_python",
-    #                   "simple_java",
-    #                   "simple_javascript",
-    #                   "multiple",
-    #                   "irrelevance",
-    #                   "live_simple",
-    #                   "live_multiple",
-    #                   "live_irrelevance",
-    #                   "live_relevance",
-    #                   "multi_turn_base",
-    #                   "multi_turn_miss_func",
-    #                   "multi_turn_miss_param",
-    #                   "multi_turn_long_context",
-    #                   ],
-    "enable_ptc": False,
-    # "bellman_model": "OpenAI/gpt-5-mini-2025-08-07",
-    "bellman_model": "vLLM/google/gemma-4-E4B-it",
+    "test_category": ["simple_python",
+                      "simple_java",
+                      "simple_javascript",
+                      "multiple",
+                      "irrelevance",
+                      "live_simple",
+                      "live_multiple",
+                      "live_irrelevance",
+                      "live_relevance",
+                      "multi_turn_base",
+                      "multi_turn_miss_func",
+                      "multi_turn_miss_param",
+                      "multi_turn_long_context",
+                      ],
+    "enable_ptc": True,
+    "bellman_model": "OpenAI/gpt-5-mini-2025-08-07",
+    # "bellman_model": "vLLM/google/gemma-4-E4B-it",
+    # "run_ids": "live_irrelevance_132-11-7",
     "temperature": None,
     "thinking": None,
-    "num_threads": 200,
+    "num_threads": 100, # 200 threads seems too much, we get rate limited :(
 }
 
 class MockArgs:
