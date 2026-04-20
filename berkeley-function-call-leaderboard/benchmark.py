@@ -38,7 +38,7 @@ RUN_CONFIG = {
     # "run_ids": "live_irrelevance_132-11-7",
     "temperature": None,
     "thinking": None,
-    "num_threads": 100, # 200 threads seems too much, we get rate limited :(
+    "num_threads": 100, # 100 threads PTC, 50 threads regular
 }
 
 class MockArgs:
