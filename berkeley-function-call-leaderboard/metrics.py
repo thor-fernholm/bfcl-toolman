@@ -50,7 +50,7 @@ class MetricsCalculator:
 
         tags_formatted = ", ".join([f"'{t}'" for t in self.target_tags])
 
-        # 1. Fetch Traces (Added project_id filter)
+        # Fetch Traces (Added project_id filter)
         traces_query = f"""
                 SELECT id, name 
                 FROM traces 
@@ -595,7 +595,8 @@ def get_model_cost(model_name):
 # --- Execution ---
 if __name__ == "__main__":
     ptc_tags = ["ptc-fc", "regular-fc"]
-    model_tags = ["OpenAI/gpt-5-mini-2025-08-07"]
+    # model_tags = ["OpenAI/gpt-5-mini-2025-08-07"]
+    model_tags = ["vLLM/google/gemma-4-E4B-it"]
 
     for model_t in model_tags:
         dfs = {}
