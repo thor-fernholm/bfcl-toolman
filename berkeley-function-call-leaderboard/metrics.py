@@ -24,11 +24,13 @@ LANGFUSE_PROJECT_ID = os.getenv("LANGFUSE_PROJECT_ID")
 if not LANGFUSE_PROJECT_ID:
     raise ValueError("Missing LANGFUSE_PROJECT_ID in .env file")
 
+
 class MetricsCalculator:
     def __init__(self, ptc_t, model_t):
         self.results = []
         self.target_tags = [ptc_t, model_t]
         self.model_name = model_t
+        self.category_map = get_categories()
         # Create a safe folder name from the tags
         safe_ptc_tag = ptc_t.replace("/", "_").replace("\\", "_")
         safe_model_tag = model_t.replace("/", "_").replace("\\", "_")
@@ -151,7 +153,6 @@ class MetricsCalculator:
             if data:
                 self.results.append(data)
 
-
     def process_trace(self, trace_id, test_id, observations, scores):
         """Calculates metrics for a single trace (test case) from dictionaries."""
         is_success = scores.get("success", False)
@@ -163,11 +164,16 @@ class MetricsCalculator:
         # DB start_time is already a pandas/python datetime object
         observations = sorted(observations, key=lambda x: x.get('start_time') or datetime.datetime.min)
 
+        # get categories
+        category = self.extract_category(test_id)
+        meta_category = self.get_meta_category(category)
+
         # Initialize Trace-Level Metrics
         trace_metrics = {
             "trace_id": trace_id,
             "test_id": test_id,
-            "category": self.extract_category(test_id),
+            "category": category,
+            "meta_category": meta_category,
             "success": is_success,
             "total_input_tokens": 0,
             "total_output_tokens": 0,
@@ -212,9 +218,12 @@ class MetricsCalculator:
 
             # Fallback checks
             if not span_type:
-                if obs_name.startswith("chat"): span_type = "step"
-                elif obs_name.startswith("turn_"): span_type = "turn"
-                elif obs_name.startswith("execute_tool"): span_type = "tool"
+                if obs_name.startswith("chat"):
+                    span_type = "step"
+                elif obs_name.startswith("turn_"):
+                    span_type = "turn"
+                elif obs_name.startswith("execute_tool"):
+                    span_type = "tool"
 
             # Check for errors
             if obs.get('level') == "ERROR":
@@ -280,7 +289,8 @@ class MetricsCalculator:
         # Context Growth Calculation
         if len(step_input_tokens_sequence) > 1:
             trace_metrics["context_growth_total"] = step_input_tokens_sequence[-1] - step_input_tokens_sequence[0]
-            trace_metrics["avg_context_growth_per_step"] = trace_metrics["context_growth_total"] / (len(step_input_tokens_sequence) - 1)
+            trace_metrics["avg_context_growth_per_step"] = trace_metrics["context_growth_total"] / (
+                        len(step_input_tokens_sequence) - 1)
         elif len(step_input_tokens_sequence) == 1:
             trace_metrics["context_growth_total"] = step_input_tokens_sequence[0]
 
@@ -291,22 +301,31 @@ class MetricsCalculator:
             trace_metrics["self_corrected_tool"] = True
 
         if trace_metrics["turn_count"] > 1:
-            trace_metrics["avg_context_growth_per_turn"] = trace_metrics["context_growth_total"] / (trace_metrics["turn_count"] - 1)
+            trace_metrics["avg_context_growth_per_turn"] = trace_metrics["context_growth_total"] / (
+                        trace_metrics["turn_count"] - 1)
         elif trace_metrics["turn_count"] == 1:
             trace_metrics["avg_context_growth_per_turn"] = trace_metrics["context_growth_total"]
 
         if trace_metrics["turn_count"] > 0:
             trace_metrics["avg_tool_calls_per_turn"] = trace_metrics["tool_call_count"] / trace_metrics["turn_count"]
-            trace_metrics["avg_input_tokens_per_turn"] = trace_metrics["total_input_tokens"] / trace_metrics["turn_count"]
-            trace_metrics["avg_output_tokens_per_turn"] = trace_metrics["total_output_tokens"] / trace_metrics["turn_count"]
-            trace_metrics["avg_thinking_tokens_per_turn"] = trace_metrics["total_thinking_tokens"] / trace_metrics["turn_count"]
-            trace_metrics["avg_llm_latency_per_turn_sec"] = trace_metrics["total_llm_latency_sec"] / trace_metrics["turn_count"]
+            trace_metrics["avg_input_tokens_per_turn"] = trace_metrics["total_input_tokens"] / trace_metrics[
+                "turn_count"]
+            trace_metrics["avg_output_tokens_per_turn"] = trace_metrics["total_output_tokens"] / trace_metrics[
+                "turn_count"]
+            trace_metrics["avg_thinking_tokens_per_turn"] = trace_metrics["total_thinking_tokens"] / trace_metrics[
+                "turn_count"]
+            trace_metrics["avg_llm_latency_per_turn_sec"] = trace_metrics["total_llm_latency_sec"] / trace_metrics[
+                "turn_count"]
 
         if trace_metrics["step_count"] > 0:
-            trace_metrics["avg_input_tokens_per_step"] = trace_metrics["total_input_tokens"] / trace_metrics["step_count"]
-            trace_metrics["avg_output_tokens_per_step"] = trace_metrics["total_output_tokens"] / trace_metrics["step_count"]
-            trace_metrics["avg_thinking_tokens_per_step"] = trace_metrics["total_thinking_tokens"] / trace_metrics["step_count"]
-            trace_metrics["avg_llm_latency_per_step_sec"] = trace_metrics["total_llm_latency_sec"] / trace_metrics["step_count"]
+            trace_metrics["avg_input_tokens_per_step"] = trace_metrics["total_input_tokens"] / trace_metrics[
+                "step_count"]
+            trace_metrics["avg_output_tokens_per_step"] = trace_metrics["total_output_tokens"] / trace_metrics[
+                "step_count"]
+            trace_metrics["avg_thinking_tokens_per_step"] = trace_metrics["total_thinking_tokens"] / trace_metrics[
+                "step_count"]
+            trace_metrics["avg_llm_latency_per_step_sec"] = trace_metrics["total_llm_latency_sec"] / trace_metrics[
+                "step_count"]
 
         return trace_metrics
 
@@ -391,57 +410,68 @@ class MetricsCalculator:
         md += f"| **Context Growth (Per Step)**| {df_success['avg_context_growth_per_step'].mean():.1f} | {df_fail['avg_context_growth_per_step'].mean():.1f} |\n\n"
 
         # --- BREAKDOWN BY CATEGORY ---
-        md += "## 3. Breakdown by Category\n\n"
+        def aggregate_metrics(group_col):
+            return df.groupby(group_col).agg(
+                tests=('test_id', 'count'),
+                successes=('success', 'sum'),
+                success_rate=('success', lambda x: x.mean() * 100),
+                sum_input=('total_input_tokens', 'sum'),
+                avg_input=('total_input_tokens', 'mean'),
+                sum_output=('total_output_tokens', 'sum'),
+                avg_output=('total_output_tokens', 'mean'),
+                sum_thinking=('total_thinking_tokens', 'sum'),
+                avg_thinking=('total_thinking_tokens', 'mean'),
+                sum_turns=('turn_count', 'sum'),
+                avg_turns=('turn_count', 'mean'),
+                sum_steps=('step_count', 'sum'),
+                avg_steps=('step_count', 'mean'),
+                sum_latency=('total_llm_latency_sec', 'sum'),
+                avg_latency=('total_llm_latency_sec', 'mean'),
+                avg_latency_turn=('avg_llm_latency_per_turn_sec', 'mean'),
+                avg_latency_step=('avg_llm_latency_per_step_sec', 'mean'),
+                avg_ctx_total=('context_growth_total', 'mean'),
+                avg_ctx_turn=('avg_context_growth_per_turn', 'mean'),
+                avg_ctx_step=('avg_context_growth_per_step', 'mean'),
+                sum_runtime_err=('runtime_error_count', 'sum'),
+                avg_runtime_err=('runtime_error_count', 'mean'),
+                sum_tool_err=('tool_error_count', 'sum'),
+                avg_tool_err=('tool_error_count', 'mean'),
+                sum_redundant=('redundant_tool_calls', 'sum'),
+                avg_redundant=('redundant_tool_calls', 'mean'),
+                sum_sc_rt=('self_corrected_runtime', 'sum'),
+                err_traces_rt=('runtime_error_count', lambda x: (x > 0).sum()),
+                sum_sc_tool=('self_corrected_tool', 'sum'),
+                err_traces_tool=('tool_error_count', lambda x: (x > 0).sum())
+            ).reset_index()
 
-        cat_df = df.groupby('category').agg(
-            tests=('test_id', 'count'),
-            successes=('success', 'sum'),
-            success_rate=('success', lambda x: x.mean() * 100),
-            sum_input=('total_input_tokens', 'sum'),
-            avg_input=('total_input_tokens', 'mean'),
-            sum_output=('total_output_tokens', 'sum'),
-            avg_output=('total_output_tokens', 'mean'),
-            sum_thinking=('total_thinking_tokens', 'sum'),
-            avg_thinking=('total_thinking_tokens', 'mean'),
-            sum_turns=('turn_count', 'sum'),
-            avg_turns=('turn_count', 'mean'),
-            sum_steps=('step_count', 'sum'),
-            avg_steps=('step_count', 'mean'),
-            sum_latency=('total_llm_latency_sec', 'sum'),
-            avg_latency=('total_llm_latency_sec', 'mean'),
-            avg_latency_turn=('avg_llm_latency_per_turn_sec', 'mean'),
-            avg_latency_step=('avg_llm_latency_per_step_sec', 'mean'),
-            avg_ctx_total=('context_growth_total', 'mean'),
-            avg_ctx_turn=('avg_context_growth_per_turn', 'mean'),
-            avg_ctx_step=('avg_context_growth_per_step', 'mean'),
-            sum_runtime_err=('runtime_error_count', 'sum'),
-            avg_runtime_err=('runtime_error_count', 'mean'),
-            sum_tool_err=('tool_error_count', 'sum'),
-            avg_tool_err=('tool_error_count', 'mean'),
-            sum_redundant=('redundant_tool_calls', 'sum'),
-            avg_redundant=('redundant_tool_calls', 'mean'),
-            sum_sc_rt=('self_corrected_runtime', 'sum'),
-            err_traces_rt=('runtime_error_count', lambda x: (x > 0).sum()),
-            sum_sc_tool=('self_corrected_tool', 'sum'),
-            err_traces_tool=('tool_error_count', lambda x: (x > 0).sum())
-        ).reset_index()
+        def format_markdown_tables(agg_df, col_name):
+            txt = f"### {col_name.replace('_', ' ').title()} Totals\n"
+            txt += f"| {col_name.replace('_', ' ').title()} | Tests | Successes | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | LLM Latency | Runtime Errors | Tool Errors | Redundant Calls | Self-Corrects (Runtime) | Self-Corrects (Tool) |\n"
+            txt += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+            for _, r in agg_df.iterrows():
+                txt += f"| {r[col_name]} | {r['tests']} | {r['successes']} | {r['sum_input']:.0f} | {r['sum_output']:.0f} | {r['sum_thinking']:.0f} | {r['sum_turns']:.0f} | {r['sum_steps']:.0f} | {r['sum_latency']:.2f}s | {r['sum_runtime_err']} | {r['sum_tool_err']} | {r['sum_redundant']} | {r['sum_sc_rt']} | {r['sum_sc_tool']} |\n"
 
-        md += "### Category Totals\n"
-        md += "| Category | Tests | Successes | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | LLM Latency | Runtime Errors | Tool Errors | Redundant Calls | Self-Corrects (Runtime) | Self-Corrects (Tool) |\n"
-        md += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
-        for _, r in cat_df.iterrows():
-            md += f"| {r['category']} | {r['tests']} | {r['successes']} | {r['sum_input']:.0f} | {r['sum_output']:.0f} | {r['sum_thinking']:.0f} | {r['sum_turns']:.0f} | {r['sum_steps']:.0f} | {r['sum_latency']:.2f}s | {r['sum_runtime_err']} | {r['sum_tool_err']} | {r['sum_redundant']} | {r['sum_sc_rt']} | {r['sum_sc_tool']} |\n"
+            txt += f"\n### {col_name.replace('_', ' ').title()} Averages\n"
+            txt += f"| {col_name.replace('_', ' ').title()} | Success Rate | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | Latency (Total/Turn/Step) | Context Growth (Total/Turn/Step) | Runtime Errors | Tool Errors | Redundant | Runtime Recovery % | Tool Recovery % |\n"
+            txt += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+            for _, r in agg_df.iterrows():
+                sc_rt_rate = (r['sum_sc_rt'] / r['err_traces_rt'] * 100) if r['err_traces_rt'] > 0 else 0.0
+                sc_tool_rate = (r['sum_sc_tool'] / r['err_traces_tool'] * 100) if r['err_traces_tool'] > 0 else 0.0
+                latency_str = f"{r['avg_latency']:.2f}s / {r['avg_latency_turn']:.2f}s / {r['avg_latency_step']:.2f}s"
+                ctx_str = f"{r['avg_ctx_total']:.1f} / {r['avg_ctx_turn']:.1f} / {r['avg_ctx_step']:.1f}"
 
-        md += "\n### Category Averages\n"
-        md += "| Category | Success Rate | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | Latency (Total/Turn/Step) | Context Growth (Total/Turn/Step) | Runtime Errors | Tool Errors | Redundant | Runtime Recovery % | Tool Recovery % |\n"
-        md += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
-        for _, r in cat_df.iterrows():
-            sc_rt_rate = (r['sum_sc_rt'] / r['err_traces_rt'] * 100) if r['err_traces_rt'] > 0 else 0.0
-            sc_tool_rate = (r['sum_sc_tool'] / r['err_traces_tool'] * 100) if r['err_traces_tool'] > 0 else 0.0
-            latency_str = f"{r['avg_latency']:.2f}s / {r['avg_latency_turn']:.2f}s / {r['avg_latency_step']:.2f}s"
-            ctx_str = f"{r['avg_ctx_total']:.1f} / {r['avg_ctx_turn']:.1f} / {r['avg_ctx_step']:.1f}"
+                txt += f"| {r[col_name]} | {r['success_rate']:.2f}% | {r['avg_input']:.1f} | {r['avg_output']:.1f} | {r['avg_thinking']:.1f} | {r['avg_turns']:.1f} | {r['avg_steps']:.1f} | {latency_str} | {ctx_str} | {r['avg_runtime_err']:.2f} | {r['avg_tool_err']:.2f} | {r['avg_redundant']:.2f} | {sc_rt_rate:.1f}% | {sc_tool_rate:.1f}% |\n"
+            return txt + "\n"
 
-            md += f"| {r['category']} | {r['success_rate']:.1f}% | {r['avg_input']:.1f} | {r['avg_output']:.1f} | {r['avg_thinking']:.1f} | {r['avg_turns']:.1f} | {r['avg_steps']:.1f} | {latency_str} | {ctx_str} | {r['avg_runtime_err']:.2f} | {r['avg_tool_err']:.2f} | {r['avg_redundant']:.2f} | {sc_rt_rate:.1f}% | {sc_tool_rate:.1f}% |\n"
+        # --- BREAKDOWN BY META-CATEGORY ---
+        md += "## 3. Breakdown by Meta-Category\n\n"
+        meta_cat_df = aggregate_metrics('meta_category')
+        md += format_markdown_tables(meta_cat_df, 'meta_category')
+
+        # --- BREAKDOWN BY SUBCATEGORY ---
+        md += "## 4. Breakdown by Category\n\n"
+        cat_df = aggregate_metrics('category')
+        md += format_markdown_tables(cat_df, 'category')
 
         # Save files
         raw_csv_path = self.output_dir / "metrics_data.csv"
@@ -472,15 +502,23 @@ class MetricsCalculator:
         with open(summary_md_path, "w", encoding="utf-8") as f:
             f.write(md)
 
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print(f" REPORT GENERATED in '{self.output_dir}'")
-        print("="*50)
+        print("=" * 50)
         print(f"-> Raw Data: {raw_csv_path.name}")
         print(f"-> Summary:  summary.md")
         if plot_filename and plot_filename.exists():
             print(f"-> Plot:     {plot_filename.name}\n")
 
         return df
+
+    def get_meta_category(self, category):
+        """Maps a subcategory to its meta-category."""
+        for meta_cat, subcats in self.category_map.items():
+            if category in subcats:
+                return meta_cat
+        return "unknown"
+
 
 def safe_int(val):
     if val is None:
@@ -501,6 +539,7 @@ def safe_int(val):
         return int(float(val))
     except (ValueError, TypeError):
         return 0
+
 
 def generate_fair_comparison_report(df_ptc, df_reg, model_t):
     """
@@ -541,8 +580,8 @@ def generate_fair_comparison_report(df_ptc, df_reg, model_t):
         ("Total Thinking Tokens", "total_thinking_tokens", 2),
         ("Total Cost $", "total_cost", 5),
         ("Task Horizon (Turns)", "turn_count", 2),
-        ("Steps", "step_count",2 ),
-        ("LLM Latency (sec)", "total_llm_latency_sec",2 ),
+        ("Steps", "step_count", 2),
+        ("LLM Latency (sec)", "total_llm_latency_sec", 2),
         ("Context Growth (Total)", "context_growth_total", 2),
         ("Tool Calls (Total)", "tool_call_count", 2),
         ("Redundant Tool Calls", "redundant_tool_calls", 2),
@@ -580,10 +619,11 @@ def generate_fair_comparison_report(df_ptc, df_reg, model_t):
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(md)
 
-    print(f"\n" + "="*50)
+    print(f"\n" + "=" * 50)
     print(f" FAIR COMPARISON REPORT GENERATED in '{output_dir}'")
-    print("="*50)
+    print("=" * 50)
     print(f"-> Summary: fair_comparison.md\n")
+
 
 def get_model_cost(model_name):
     match model_name:
@@ -591,6 +631,14 @@ def get_model_cost(model_name):
             return (0.25 * 1e-06, 2.0 * 1e-06, 2.0 * 1e-06)
         case _:
             return None
+
+
+def get_categories():
+    single_turn = ["simple_java", "simple_javascript", "simple_python", "multiple", "live_simple", "live_multiple"]
+    multi_turn = ["multi_turn_base", "multi_turn_long_context", "multi_turn_miss_func", "multi_turn_miss_param"]
+    irrelevance = ["irrelevance", "live_irrelevance", "live_relevance"]
+    return {"single_turn": single_turn, "multi_turn": multi_turn, "irrelevance": irrelevance}
+
 
 # --- Execution ---
 if __name__ == "__main__":
