@@ -39,19 +39,21 @@
 
 ## 3. Breakdown by Meta-Category
 
-### Meta Category Totals
-| Meta Category | Tests | Successes | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | LLM Latency | Runtime Errors | Tool Errors | Redundant Calls | Self-Corrects (Runtime) | Self-Corrects (Tool) |
+### Meta-Category Totals (Unweighted Sums)
+| Meta-Category | Tests | Successes | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | LLM Latency | Runtime Errors | Tool Errors | Redundant Calls | Self-Corrects (Runtime) | Self-Corrects (Tool) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| irrelevance | 1140 | 839 | 1699371 | 65635 | 0 | 1161 | 1345 | 3421.89s | 0 | 0 | 3 | 0 | 0 |
-| multi_turn | 800 | 146 | 41959350 | 500693 | 0 | 3317 | 6728 | 184859.46s | 0 | 703 | 2588 | 0 | 18 |
 | single_turn | 2061 | 1648 | 3022669 | 126370 | 0 | 2061 | 2152 | 5170.40s | 0 | 0 | 6 | 0 | 0 |
+| multi_turn | 800 | 146 | 41959350 | 500693 | 0 | 3317 | 6728 | 184859.46s | 0 | 703 | 2588 | 0 | 18 |
+| irrelevance | 1140 | 839 | 1699371 | 65635 | 0 | 1161 | 1345 | 3421.89s | 0 | 0 | 3 | 0 | 0 |
 
-### Meta Category Averages
-| Meta Category | Success Rate | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | Latency (Total/Turn/Step) | Context Growth (Total/Turn/Step) | Runtime Errors | Tool Errors | Redundant | Runtime Recovery % | Tool Recovery % |
+### Meta-Category Averages (Weighted)
+| Meta-Category | Success Rate | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | Latency (Total/Turn/Step) | Context Growth (Total/Turn/Step) | Runtime Errors | Tool Errors | Redundant | Runtime Recovery % | Tool Recovery % |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| irrelevance | 73.60% | 1490.7 | 57.6 | 0.0 | 1.0 | 1.2 | 3.00s / 2.97s / 2.53s | 1183.7 / 1182.0 / 25.0 | 0.00 | 0.00 | 0.00 | 0.0% | 0.0% |
-| multi_turn | 18.25% | 52449.2 | 625.9 | 0.0 | 4.1 | 8.4 | 231.07s / 57.66s / 27.94s | 2101.8 / 890.8 / 321.0 | 0.00 | 0.88 | 3.23 | 0.0% | 4.3% |
-| single_turn | 79.96% | 1466.6 | 61.3 | 0.0 | 1.0 | 1.0 | 2.51s / 2.51s / 2.41s | 1377.3 / 1377.3 / 6.1 | 0.00 | 0.00 | 0.00 | 0.0% | 0.0% |
+| single_turn | 78.64% | 1434.5 | 61.6 | 0.0 | 1.0 | 1.0 | 2.61s / 2.61s / 2.50s | 1333.9 / 1333.9 / 7.3 | 0.00 | 0.00 | 0.00 | 0.0% | 0.0% |
+| multi_turn | 18.25% | 52449.2 | 625.9 | 0.0 | 4.1 | 8.4 | 231.07s / 57.66s / 27.94s | 2101.8 / 890.8 / 321.0 | 0.00 | 0.88 | 3.24 | 0.0% | 4.1% |
+| irrelevance | 72.46% | 1383.9 | 55.3 | 0.0 | 1.0 | 1.2 | 2.83s / 2.81s / 2.41s | 1080.2 / 1079.1 / 24.5 | 0.00 | 0.00 | 0.00 | 0.0% | 0.0% |
+
+**Category Accuracy (Weighted 3:2:1 for Multi:Single:Irrelevance):** 47.41%
 
 ## 4. Breakdown by Category
 

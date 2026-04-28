@@ -37,7 +37,26 @@
 | **Context Growth (Per Turn)**| 1680.8 ± 147.1 | 2813.9 ± 218.1 |
 | **Context Growth (Per Step)**| 68.6 ± 17.4 | 117.6 ± 14.4 |
 
-## 3. Breakdown by Category
+## 3. Breakdown by Meta-Category
+
+### Meta-Category Totals (Unweighted Sums)
+| Meta-Category | Tests | Successes | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | LLM Latency | Runtime Errors | Tool Errors | Redundant Calls | Self-Corrects (Runtime) | Self-Corrects (Tool) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| single_turn | 2061 ± 0 | 1550 ± 17 | 2903980 ± 0 | 92504 ± 242 | 567083 ± 14874 | 2061 ± 0 | 2061 ± 0 | 9813.18s ± 1937.40s | 0 ± 0 | 0 ± 0 | 55 ± 4 | 0 ± 0 | 0 ± 0 |
+| multi_turn | 800 ± 0 | 375 ± 5 | 201218017 ± 4691718 | 630670 ± 43761 | 3753067 ± 270706 | 3085 ± 59 | 24264 ± 7979 | 72974.29s ± 7852.92s | 0 ± 0 | 0 ± 0 | 6692 ± 621 | 0 ± 0 | 0 ± 0 |
+| irrelevance | 1140 ± 0 | 146 ± 9 | 1401606 ± 0 | 138779 ± 40672 | 976960 ± 5266 | 1161 ± 0 | 1172 ± 14 | 14393.14s ± 3631.97s | 0 ± 0 | 0 ± 0 | 92 ± 8 | 0 ± 0 | 0 ± 0 |
+
+### Meta-Category Averages (Weighted)
+| Meta-Category | Success Rate | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | Latency (Total/Turn/Step) | Context Growth (Total/Turn/Step) | Runtime Errors | Tool Errors | Redundant | Runtime Recovery % | Tool Recovery % |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| single_turn | 74.17% ± 0.99% | 1320.8 ± 0.0 | 44.5 ± 0.1 | 277.7 ± 5.5 | 1.0 ± 0.0 | 1.0 ± 0.0 | 4.82s ± 0.92s / 4.82s ± 0.92s / 4.82s ± 0.92s | 1320.8 ± 0.0 / 1320.8 ± 0.0 / 0.0 ± 0.0 | 0.00 ± 0.00 | 0.00 ± 0.00 | 0.02 ± 0.00 | 0.0% ± 0.0% | 0.0% ± 0.0% |
+| multi_turn | 46.92% ± 0.64% | 251522.5 ± 5864.6 | 788.3 ± 54.7 | 4691.3 ± 338.4 | 3.9 ± 0.1 | 30.3 ± 10.0 | 91.22s ± 9.82s / 33.54s ± 2.86s / 3.79s ± 1.15s | 8478.3 ± 393.1 / 5763.7 ± 299.7 / 461.4 ± 18.5 | 0.00 ± 0.00 | 0.00 ± 0.00 | 8.37 ± 0.78 | 0.0% ± 0.0% | 0.0% ± 0.0% |
+| irrelevance | 11.87% ± 0.71% | 990.9 ± 0.0 | 137.1 ± 69.5 | 841.1 ± 6.2 | 1.0 ± 0.0 | 1.0 ± 0.0 | 12.85s ± 2.97s / 12.83s ± 2.97s / 12.38s ± 2.78s | 990.9 ± 0.0 / 989.3 ± 0.0 / 0.0 ± 0.0 | 0.00 ± 0.00 | 0.00 ± 0.00 | 0.11 ± 0.01 | 0.0% ± 0.0% | 0.0% ± 0.0% |
+
+
+**Category Accuracy (Weighted 3:2:1 for Multi:Single:Irrelevance):** 50.16% ± 0.45%
+
+## 4. Breakdown by Category
 
 ### Category Totals
 | Category | Tests | Successes | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | LLM Latency | Runtime Errors | Tool Errors | Redundant Calls | Self-Corrects (Runtime) | Self-Corrects (Tool) |

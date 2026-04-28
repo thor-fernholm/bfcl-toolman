@@ -463,10 +463,96 @@ class MetricsCalculator:
                 txt += f"| {r[col_name]} | {r['success_rate']:.2f}% | {r['avg_input']:.1f} | {r['avg_output']:.1f} | {r['avg_thinking']:.1f} | {r['avg_turns']:.1f} | {r['avg_steps']:.1f} | {latency_str} | {ctx_str} | {r['avg_runtime_err']:.2f} | {r['avg_tool_err']:.2f} | {r['avg_redundant']:.2f} | {sc_rt_rate:.1f}% | {sc_tool_rate:.1f}% |\n"
             return txt + "\n"
 
-        # --- BREAKDOWN BY META-CATEGORY ---
+        # --- BREAKDOWN BY META-CATEGORY (WEIGHTED) ---
         md += "## 3. Breakdown by Meta-Category\n\n"
-        meta_cat_df = aggregate_metrics('meta_category')
-        md += format_markdown_tables(meta_cat_df, 'meta_category')
+
+        md += "### Meta-Category Totals (Unweighted Sums)\n"
+        md += "| Meta-Category | Tests | Successes | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | LLM Latency | Runtime Errors | Tool Errors | Redundant Calls | Self-Corrects (Runtime) | Self-Corrects (Tool) |\n"
+        md += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+
+        meta_cat_avgs_str = ""
+        meta_weighted_sums = 0.0
+        meta_weight_totals = 0.0
+
+        for m_cat, subcats in self.category_map.items():
+            mc_df = df[df['category'].isin(subcats)]
+            if mc_df.empty:
+                continue
+
+            # 1. Totals (Sums are never weighted)
+            mc_n = len(mc_df)
+            mc_succ = mc_df['success'].sum()
+            mc_in = mc_df['total_input_tokens'].sum()
+            mc_out = mc_df['total_output_tokens'].sum()
+            mc_think = mc_df['total_thinking_tokens'].sum()
+            mc_turns = mc_df['turn_count'].sum()
+            mc_steps = mc_df['step_count'].sum()
+            mc_lat = mc_df['total_llm_latency_sec'].sum()
+            mc_rt_err = mc_df['runtime_error_count'].sum()
+            mc_tl_err = mc_df['tool_error_count'].sum()
+            mc_red = mc_df['redundant_tool_calls'].sum()
+            mc_sc_rt = mc_df['self_corrected_runtime'].sum()
+            mc_sc_tl = mc_df['self_corrected_tool'].sum()
+
+            md += f"| {m_cat} | {mc_n} | {mc_succ} | {mc_in:.0f} | {mc_out:.0f} | {mc_think:.0f} | {mc_turns:.0f} | {mc_steps:.0f} | {mc_lat:.2f}s | {mc_rt_err} | {mc_tl_err} | {mc_red} | {mc_sc_rt} | {mc_sc_tl} |\n"
+
+            # 2. Calculate Weighted Averages for this Meta-Category
+            def calc_w_avg(col, is_ratio=False, den_col=None):
+                num = 0.0
+                den = 0.0
+                for cat in subcats:
+                    cat_df = df[df['category'] == cat]
+                    if not cat_df.empty:
+                        w = CATEGORY_WEIGHTS.get(cat, 1.0)
+                        if is_ratio:
+                            cat_den = (cat_df[den_col] > 0).sum()
+                            cat_num = cat_df[col].sum()
+                            val = (cat_num / cat_den) if cat_den > 0 else 0.0
+                        else:
+                            val = cat_df[col].mean()
+                        num += val * w
+                        den += w
+                return num / den if den > 0 else 0.0
+
+            w_succ_rate = calc_w_avg('success') * 100
+            w_in = calc_w_avg('total_input_tokens')
+            w_out = calc_w_avg('total_output_tokens')
+            w_think = calc_w_avg('total_thinking_tokens')
+            w_turns = calc_w_avg('turn_count')
+            w_steps = calc_w_avg('step_count')
+
+            w_lat_tot = calc_w_avg('total_llm_latency_sec')
+            w_lat_trn = calc_w_avg('avg_llm_latency_per_turn_sec')
+            w_lat_stp = calc_w_avg('avg_llm_latency_per_step_sec')
+
+            w_ctx_tot = calc_w_avg('context_growth_total')
+            w_ctx_trn = calc_w_avg('avg_context_growth_per_turn')
+            w_ctx_stp = calc_w_avg('avg_context_growth_per_step')
+
+            w_rt_err = calc_w_avg('runtime_error_count')
+            w_tl_err = calc_w_avg('tool_error_count')
+            w_red = calc_w_avg('redundant_tool_calls')
+
+            w_sc_rt_rate = calc_w_avg('self_corrected_runtime', True, 'runtime_error_count') * 100
+            w_sc_tl_rate = calc_w_avg('self_corrected_tool', True, 'tool_error_count') * 100
+
+            c_lat = f"{w_lat_tot:.2f}s / {w_lat_trn:.2f}s / {w_lat_stp:.2f}s"
+            c_ctx = f"{w_ctx_tot:.1f} / {w_ctx_trn:.1f} / {w_ctx_stp:.1f}"
+
+            meta_cat_avgs_str += f"| {m_cat} | {w_succ_rate:.2f}% | {w_in:.1f} | {w_out:.1f} | {w_think:.1f} | {w_turns:.1f} | {w_steps:.1f} | {c_lat} | {c_ctx} | {w_rt_err:.2f} | {w_tl_err:.2f} | {w_red:.2f} | {w_sc_rt_rate:.1f}% | {w_sc_tl_rate:.1f}% |\n"
+
+            # 3. Track Custom 3:2:1 Category Accuracy
+            m_weight = META_WEIGHTS.get(m_cat, 1.0)
+            meta_weighted_sums += w_succ_rate * m_weight
+            meta_weight_totals += m_weight
+
+        md += "\n### Meta-Category Averages (Weighted)\n"
+        md += "| Meta-Category | Success Rate | Input Tokens | Output Tokens | Thinking Tokens | Turns | Steps | Latency (Total/Turn/Step) | Context Growth (Total/Turn/Step) | Runtime Errors | Tool Errors | Redundant | Runtime Recovery % | Tool Recovery % |\n"
+        md += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+        md += meta_cat_avgs_str + "\n"
+
+        cat_acc = meta_weighted_sums / meta_weight_totals if meta_weight_totals > 0 else 0.0
+        md += f"**Category Accuracy (Weighted 3:2:1 for Multi:Single:Irrelevance):** {cat_acc:.2f}%\n\n"
 
         # --- BREAKDOWN BY SUBCATEGORY ---
         md += "## 4. Breakdown by Category\n\n"
@@ -639,6 +725,25 @@ def get_categories():
     irrelevance = ["irrelevance", "live_irrelevance", "live_relevance"]
     return {"single_turn": single_turn, "multi_turn": multi_turn, "irrelevance": irrelevance}
 
+# Official BFCL Weighting Scheme Implementation
+CATEGORY_WEIGHTS = {
+    "simple_java":       0.25 / 3.0,
+    "simple_javascript": 0.25 / 3.0,
+    "simple_python":     0.25 / 3.0,
+    "multiple":          0.25,
+    "live_simple":       0.50 * (258.0 / 1311.0),
+    "live_multiple":     0.50 * (1053.0 / 1311.0),
+    "multi_turn_base":         1.0,
+    "multi_turn_long_context": 1.0,
+    "multi_turn_miss_func":    1.0,
+    "multi_turn_miss_param":   1.0,
+    "irrelevance":      562.0,
+    "live_irrelevance": 562.0,
+    "live_relevance":   16.0
+}
+
+# Custom 3:2:1 Meta-Category Weights
+META_WEIGHTS = {"multi_turn": 3.0, "single_turn": 2.0, "irrelevance": 1.0}
 
 # --- Execution ---
 if __name__ == "__main__":
